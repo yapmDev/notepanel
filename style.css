@@ -1,0 +1,147 @@
+* {
+    font-family: "Ubuntu", sans-serif;
+}
+
+#panel-root {
+    background-color: @theme_bg_color;
+    border-left: 1px solid @borders;
+}
+
+#toolbar {
+    background-color: @theme_bg_color;
+    padding: 10px 12px 4px 12px;
+}
+
+#search-entry {
+    background-color: @theme_base_color;
+    color: @theme_text_color;
+    border: 1px solid @borders;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 14px;
+    caret-color: @theme_selected_bg_color;
+    min-width: 200px;
+}
+
+#search-entry:focus {
+    border-color: @theme_selected_bg_color;
+}
+
+#note-list {
+    background-color: transparent;
+}
+
+.note-row {
+    background-color: shade(@theme_bg_color, 0.85);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin: 3px 8px;
+    border: 1px solid transparent;
+}
+
+.note-row:hover {
+    background-color: shade(@theme_bg_color, 0.95);
+    border-color: @unfocused_borders;
+}
+
+.note-row:selected,
+.note-row.selected {
+    background-color: shade(@theme_bg_color, 0.95);
+    border-color: @theme_selected_bg_color;
+}
+
+.note-title {
+    color: @theme_fg_color;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.note-preview {
+    color: mix(@theme_fg_color, @theme_bg_color, 0.5);
+    font-size: 12px;
+}
+
+#editor-box {
+    background-color: @theme_base_color;
+    border-top: 1px solid @borders;
+}
+
+#editor-actions {
+    padding: 4px 8px;
+    border-bottom: 1px solid @borders;
+}
+
+#btn-action {
+    background-color: transparent;
+    color: mix(@theme_fg_color, @theme_bg_color, 0.4);
+    border: 1px solid @borders;
+    border-radius: 5px;
+    padding: 2px 10px;
+    font-size: 12px;
+}
+
+#btn-action:hover {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+    border-color: @theme_selected_bg_color;
+}
+
+#editor-box scrolledwindow,
+#editor-box scrolledwindow viewport {
+    background-color: transparent;
+}
+
+#editor-text,
+#editor-text text {
+    background-color: transparent;
+    color: @theme_text_color;
+}
+
+#editor-text {
+    border: none;
+    padding: 12px 14px;
+    font-size: 13px;
+    caret-color: @theme_selected_bg_color;
+}
+
+#btn-new {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 20px;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+#btn-new:hover {
+    background-color: shade(@theme_selected_bg_color, 1.15);
+}
+
+.row-delete-btn {
+    background-color: transparent;
+    color: mix(@theme_fg_color, @theme_bg_color, 0.6);
+    border: none;
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 12px;
+    min-width: 0;
+    min-height: 0;
+}
+
+.row-delete-btn:hover {
+    background-color: @error_color;
+    color: @theme_selected_fg_color;
+}
+
+#bottom-bar {
+    background-color: @theme_bg_color;
+    padding: 8px 12px 12px 12px;
+    border-top: 1px solid @borders;
+}
+
+#status-label {
+    color: mix(@theme_fg_color, @theme_bg_color, 0.5);
+    font-size: 11px;
+    padding: 0 8px 4px 8px;
+}
