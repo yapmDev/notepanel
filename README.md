@@ -1,6 +1,6 @@
-# ubuntu-notes
+# notepanel
 
-A lightweight notes panel for Ubuntu/GNOME. Click the tray icon (or use a hotkey) to slide in a full-height panel from the right edge of your primary monitor. Notes are stored as plain Markdown files.
+A lightweight notes panel for Linux/GNOME. Click the tray icon (or use a hotkey) to slide in a full-height panel from the right edge of your primary monitor. Notes are stored as plain Markdown files.
 
 ## Features
 
@@ -12,23 +12,37 @@ A lightweight notes panel for Ubuntu/GNOME. Click the tray icon (or use a hotkey
 - **Follows the system theme** — uses GTK3 / GNOME color variables
 - **Hotkey support** via [keymit](https://github.com/yapmDev/keymit) (or any tool that can send `SIGUSR1`)
 - **systemd user service** — starts automatically on login
-- Notes stored as `.md` files in `~/.local/share/ubuntu-notes/`
+- Notes stored as `.md` files in `~/.local/share/notepanel/`
 
 ## Requirements
 
-- Ubuntu 22.04+ with GNOME
+- Linux with **GNOME** (or any DE that supports `Gtk.StatusIcon`)
+- **X11 or XWayland** — window positioning relies on X11 hints
 - Python 3.12+
-- GTK3 (pre-installed on Ubuntu)
+- GTK3 (pre-installed on most distros)
 
+### Dependencies
+
+**Ubuntu / Debian**
 ```bash
 sudo apt install gir1.2-webkit2-4.1 python3-markdown
+```
+
+**Fedora**
+```bash
+sudo dnf install webkit2gtk4.1 python3-markdown
+```
+
+**Arch / Manjaro**
+```bash
+sudo pacman -S webkit2gtk python-markdown
 ```
 
 ## Installation
 
 ```bash
-git clone https://github.com/yapmDev/ubuntu_notes.git
-cd ubuntu_notes
+git clone https://github.com/yapmDev/notepanel.git
+cd notepanel
 ```
 
 Run once to verify it works:
@@ -39,15 +53,15 @@ python3 main.py
 
 ## Run as a systemd user service (recommended)
 
-Create `~/.config/systemd/user/ubuntu-notes.service`:
+Create `~/.config/systemd/user/notepanel.service`:
 
 ```ini
 [Unit]
-Description=ubuntu-notes panel
+Description=notepanel
 After=graphical-session.target
 
 [Service]
-ExecStart=/usr/bin/python3 /path/to/ubuntu_notes/main.py
+ExecStart=/usr/bin/python3 /path/to/notepanel/main.py
 Restart=on-failure
 RestartSec=3
 
@@ -59,15 +73,15 @@ Enable and start:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now ubuntu-notes
+systemctl --user enable --now notepanel
 ```
 
 Useful commands:
 
 ```bash
-systemctl --user status ubuntu-notes
-systemctl --user restart ubuntu-notes
-journalctl --user -u ubuntu-notes -f
+systemctl --user status notepanel
+systemctl --user restart notepanel
+journalctl --user -u notepanel -f
 ```
 
 ## Hotkey integration
@@ -76,10 +90,10 @@ The app listens for `SIGUSR1` to toggle the panel. Bind it to any key using your
 
 ```bash
 # toggle from the terminal
-systemctl --user kill --signal=USR1 ubuntu-notes
+systemctl --user kill --signal=USR1 notepanel
 
 # with keymit
-keymit bind ctrl+n "systemctl --user kill --signal=USR1 ubuntu-notes"
+keymit bind ctrl+n "systemctl --user kill --signal=USR1 notepanel"
 ```
 
 ## Usage

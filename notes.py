@@ -3,7 +3,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-NOTES_DIR = Path.home() / ".local" / "share" / "ubuntu-notes"
+NOTES_DIR = Path.home() / ".local" / "share" / "notepanel"
 
 
 def ensure_dir():
