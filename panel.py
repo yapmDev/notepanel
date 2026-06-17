@@ -6,88 +6,10 @@ gi.require_version("WebKit2", "4.1")
 from gi.repository import Gtk, Gdk, GdkX11, GLib, WebKit2
 from pathlib import Path
 import time
-import markdown as md_lib
 import notes as notes_mod
-
-PANEL_WIDTH_RATIO = 0.20
-
-
-class NoteRow(Gtk.ListBoxRow):
-    def __init__(self, note: dict, on_delete):
-        super().__init__()
-        self.note = note
-        self.get_style_context().add_class("note-row")
-
-        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        row_box.set_margin_top(2)
-        row_box.set_margin_bottom(2)
-
-        text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-
-        title = Gtk.Label(label=note["title"], xalign=0)
-        title.get_style_context().add_class("note-title")
-        title.set_ellipsize(3)
-        text_box.pack_start(title, False, False, 0)
-
-        if note["preview"]:
-            preview = Gtk.Label(label=note["preview"], xalign=0)
-            preview.get_style_context().add_class("note-preview")
-            preview.set_ellipsize(3)
-            text_box.pack_start(preview, False, False, 0)
-
-        del_btn = Gtk.Button(label="✕")
-        del_btn.get_style_context().add_class("row-delete-btn")
-        del_btn.set_valign(Gtk.Align.CENTER)
-        del_btn.connect("clicked", lambda _: on_delete(note["path"]))
-
-        row_box.pack_start(text_box, True, True, 0)
-        row_box.pack_start(del_btn, False, False, 0)
-
-        self.add(row_box)
-        self.show_all()
-
-
-class TrashRow(Gtk.ListBoxRow):
-    def __init__(self, note: dict, on_restore, on_delete_permanent):
-        super().__init__()
-        self.note = note
-        self.get_style_context().add_class("note-row")
-
-        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        row_box.set_margin_top(2)
-        row_box.set_margin_bottom(2)
-
-        text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-
-        title = Gtk.Label(label=note["title"], xalign=0)
-        title.get_style_context().add_class("note-title")
-        title.set_ellipsize(3)
-        text_box.pack_start(title, False, False, 0)
-
-        if note["preview"]:
-            preview = Gtk.Label(label=note["preview"], xalign=0)
-            preview.get_style_context().add_class("note-preview")
-            preview.set_ellipsize(3)
-            text_box.pack_start(preview, False, False, 0)
-
-        btn_restore = Gtk.Button(label="↩")
-        btn_restore.get_style_context().add_class("row-restore-btn")
-        btn_restore.set_tooltip_text("Restore")
-        btn_restore.set_valign(Gtk.Align.CENTER)
-        btn_restore.connect("clicked", lambda _: on_restore(note["path"]))
-
-        btn_del = Gtk.Button(label="✕")
-        btn_del.get_style_context().add_class("row-delete-btn")
-        btn_del.set_tooltip_text("Delete permanently")
-        btn_del.set_valign(Gtk.Align.CENTER)
-        btn_del.connect("clicked", lambda _: on_delete_permanent(note["path"]))
-
-        row_box.pack_start(text_box, True, True, 0)
-        row_box.pack_start(btn_restore, False, False, 0)
-        row_box.pack_start(btn_del, False, False, 0)
-
-        self.add(row_box)
-        self.show_all()
+import preview as preview_mod
+import geometry as geometry_mod
+from widgets import NoteRow, TrashRow
 
 
 class NotesPanel(Gtk.Window):
@@ -249,36 +171,16 @@ class NotesPanel(Gtk.Window):
 
         self.add(root)
 
-    def _get_target_geometry(self):
-        display = Gdk.Display.get_default()
-        monitor = display.get_primary_monitor() or display.get_monitor(0)
-        geo = monitor.get_geometry()
-        work = monitor.get_workarea()
-        w = int(geo.width * PANEL_WIDTH_RATIO)
-        h = work.height if work.height > 0 else geo.height
-        y = work.y if work.height > 0 else geo.y
-        x = geo.x + geo.width - w
-        return x, y, w, h
-
-    def _apply_geometry(self, x, y, w, h):
-        self.set_size_request(w, h)
-        gdk_win = self.get_window()
-        if gdk_win:
-            gdk_win.move_resize(x, y, w, h)
-        else:
-            self.resize(w, h)
-            self.move(x, y)
-
     def _position_panel(self):
-        x, y, w, h = self._get_target_geometry()
+        x, y, w, h = geometry_mod.get_target_geometry()
         self.set_size_request(w, h)
 
     def _on_map_event(self, widget, event):
         if self._pending_position:
             self._pending_position = False
-            x, y, w, h = self._get_target_geometry()
-            self._apply_geometry(x, y, w, h)
-            GLib.timeout_add(80, lambda: self._apply_geometry(x, y, w, h) or False)
+            x, y, w, h = geometry_mod.get_target_geometry()
+            geometry_mod.apply_geometry(self, x, y, w, h)
+            GLib.timeout_add(80, lambda: geometry_mod.apply_geometry(self, x, y, w, h) or False)
         return False
 
     def _refresh_notes(self, query: str = ""):
@@ -319,7 +221,9 @@ class NotesPanel(Gtk.Window):
         buf.handler_unblock_by_func(self._on_content_changed)
         if self._preview_mode:
             content = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
-            self.web_view.load_html(self._build_preview_html(content), "file:///")
+            self.web_view.load_html(
+                preview_mod.build_preview_html(content, self.get_style_context()), "file:///"
+            )
 
     def _schedule_save(self):
         if self._save_timeout is not None:
@@ -398,87 +302,14 @@ class NotesPanel(Gtk.Window):
 
     # --- preview ---
 
-    def _theme_hex(self, name: str, fallback: str) -> str:
-        found, c = self.get_style_context().lookup_color(name)
-        if not found:
-            return fallback
-        return "#{:02x}{:02x}{:02x}".format(int(c.red * 255), int(c.green * 255), int(c.blue * 255))
-
-    def _build_preview_html(self, content: str) -> str:
-        bg      = self._theme_hex("theme_base_color",        "#272727")
-        fg      = self._theme_hex("theme_text_color",        "#ffffff")
-        accent  = self._theme_hex("theme_selected_bg_color", "#da3450")
-        border  = self._theme_hex("borders",                 "#181818")
-        code_bg = self._theme_hex("theme_bg_color",          "#2c2c2c")
-
-        body = md_lib.markdown(
-            content,
-            extensions=["fenced_code", "tables", "nl2br", "sane_lists"],
-        )
-
-        return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{
-    background: {bg};
-    color: {fg};
-    font-family: Ubuntu, sans-serif;
-    font-size: 13px;
-    line-height: 1.6;
-    padding: 14px;
-    word-wrap: break-word;
-}}
-h1, h2, h3, h4 {{
-    color: {accent};
-    margin: 1em 0 .4em;
-    line-height: 1.2;
-}}
-h1 {{ font-size: 1.5em; border-bottom: 1px solid {border}; padding-bottom: .3em; }}
-h2 {{ font-size: 1.25em; }}
-h3 {{ font-size: 1.05em; }}
-p {{ margin: .5em 0; }}
-a {{ color: {accent}; }}
-code {{
-    background: {code_bg};
-    border: 1px solid {border};
-    border-radius: 4px;
-    padding: 1px 5px;
-    font-family: monospace;
-    font-size: 12px;
-}}
-pre {{
-    background: {code_bg};
-    border: 1px solid {border};
-    border-radius: 6px;
-    padding: 10px 12px;
-    overflow-x: auto;
-    margin: .6em 0;
-}}
-pre code {{
-    background: transparent;
-    border: none;
-    padding: 0;
-    font-size: 12px;
-}}
-blockquote {{
-    border-left: 3px solid {accent};
-    margin: .5em 0;
-    padding: .2em .8em;
-    opacity: .8;
-}}
-ul, ol {{ padding-left: 1.4em; margin: .4em 0; }}
-li {{ margin: .15em 0; }}
-table {{ border-collapse: collapse; width: 100%; margin: .6em 0; }}
-th, td {{ border: 1px solid {border}; padding: 5px 10px; text-align: left; }}
-th {{ background: {code_bg}; color: {accent}; }}
-hr {{ border: none; border-top: 1px solid {border}; margin: 1em 0; }}
-</style></head><body>{body}</body></html>"""
-
     def _on_toggle_preview(self, btn):
         self._preview_mode = not self._preview_mode
         if self._preview_mode:
             buf = self.text_view.get_buffer()
             content = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
-            self.web_view.load_html(self._build_preview_html(content), "file:///")
+            self.web_view.load_html(
+                preview_mod.build_preview_html(content, self.get_style_context()), "file:///"
+            )
             self.editor_stack.set_visible_child_name("preview")
             self.btn_preview.set_image(
                 Gtk.Image.new_from_icon_name("document-edit-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
@@ -556,7 +387,7 @@ hr {{ border: none; border-top: 1px solid {border}; margin: 1em 0; }}
         else:
             if time.monotonic() - self._hidden_at < 0.3:
                 return
-            x, y, w, h = self._get_target_geometry()
+            x, y, w, h = geometry_mod.get_target_geometry()
             self.set_size_request(w, h)
             self.move(x, y)
             self._pending_position = True
