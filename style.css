@@ -189,3 +189,38 @@
     font-size: 11px;
     padding: 0 8px 4px 8px;
 }
+
+#quick-capture {
+    background-color: @theme_bg_color;
+    border: 1px solid @borders;
+    border-radius: 10px;
+}
+
+#quick-capture scrolledwindow,
+#quick-capture scrolledwindow viewport {
+    background-color: transparent;
+}
+
+#capture-text,
+#capture-text text {
+    background-color: @theme_base_color;
+    color: @theme_text_color;
+}
+
+#capture-text {
+    border: none;
+    padding: 14px 16px;
+    font-size: 14px;
+    caret-color: @theme_selected_bg_color;
+}
+
+#capture-bar {
+    background-color: @theme_bg_color;
+    padding: 8px 12px 10px 12px;
+    border-top: 1px solid @borders;
+}
+
+#capture-hint {
+    color: mix(@theme_fg_color, @theme_bg_color, 0.5);
+    font-size: 11px;
+}

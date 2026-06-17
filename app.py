@@ -4,6 +4,7 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GdkPixbuf, GLib
 from pathlib import Path
 from panel import NotesPanel
+from widgets import QuickCaptureDialog
 
 ICON_PATH = Path(__file__).parent / "assets" / "icon.svg"
 
@@ -38,7 +39,9 @@ class NotesApp:
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self._on_sigusr1)
 
     def _on_sigusr1(self):
-        self.panel.toggle()
+        dialog = QuickCaptureDialog()
+        dialog.show_all()
+        dialog.present()
         return GLib.SOURCE_CONTINUE
 
     def run(self):

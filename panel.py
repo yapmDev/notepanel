@@ -391,5 +391,6 @@ class NotesPanel(Gtk.Window):
             self.set_size_request(w, h)
             self.move(x, y)
             self._pending_position = True
+            self._refresh_notes(self.search.get_text())
             self.show_all()
             GLib.idle_add(self._request_focus)
