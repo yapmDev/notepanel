@@ -47,6 +47,49 @@ class NoteRow(Gtk.ListBoxRow):
         self.show_all()
 
 
+class TrashRow(Gtk.ListBoxRow):
+    def __init__(self, note: dict, on_restore, on_delete_permanent):
+        super().__init__()
+        self.note = note
+        self.get_style_context().add_class("note-row")
+
+        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        row_box.set_margin_top(2)
+        row_box.set_margin_bottom(2)
+
+        text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+
+        title = Gtk.Label(label=note["title"], xalign=0)
+        title.get_style_context().add_class("note-title")
+        title.set_ellipsize(3)
+        text_box.pack_start(title, False, False, 0)
+
+        if note["preview"]:
+            preview = Gtk.Label(label=note["preview"], xalign=0)
+            preview.get_style_context().add_class("note-preview")
+            preview.set_ellipsize(3)
+            text_box.pack_start(preview, False, False, 0)
+
+        btn_restore = Gtk.Button(label="↩")
+        btn_restore.get_style_context().add_class("row-restore-btn")
+        btn_restore.set_tooltip_text("Restore")
+        btn_restore.set_valign(Gtk.Align.CENTER)
+        btn_restore.connect("clicked", lambda _: on_restore(note["path"]))
+
+        btn_del = Gtk.Button(label="✕")
+        btn_del.get_style_context().add_class("row-delete-btn")
+        btn_del.set_tooltip_text("Delete permanently")
+        btn_del.set_valign(Gtk.Align.CENTER)
+        btn_del.connect("clicked", lambda _: on_delete_permanent(note["path"]))
+
+        row_box.pack_start(text_box, True, True, 0)
+        row_box.pack_start(btn_restore, False, False, 0)
+        row_box.pack_start(btn_del, False, False, 0)
+
+        self.add(row_box)
+        self.show_all()
+
+
 class NotesPanel(Gtk.Window):
     def __init__(self):
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
@@ -64,6 +107,7 @@ class NotesPanel(Gtk.Window):
         self._pending_position = False
         self._hidden_at: float = 0.0
         self._hide_timeout: int | None = None
+        self._trash_mode = False
 
         self._load_css()
         self._build_ui()
@@ -89,7 +133,6 @@ class NotesPanel(Gtk.Window):
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.set_name("panel-root")
 
-        # search bar centrada
         search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         search_box.set_name("toolbar")
         self.search = Gtk.SearchEntry()
@@ -102,7 +145,6 @@ class NotesPanel(Gtk.Window):
         self.status_label = Gtk.Label(label="", xalign=0)
         self.status_label.set_name("status-label")
 
-        # lista de notas
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_vexpand(True)
@@ -113,7 +155,6 @@ class NotesPanel(Gtk.Window):
         self.list_box.connect("row-activated", self._on_row_activated)
         scroll.add(self.list_box)
 
-        # editor
         editor_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         editor_box.set_name("editor-box")
         editor_box.set_vexpand(True)
@@ -141,7 +182,6 @@ class NotesPanel(Gtk.Window):
         editor_actions.pack_start(btn_select_all, False, False, 0)
         editor_actions.pack_end(self.btn_preview, False, False, 0)
 
-        # stack: editor ↔ preview
         self.editor_stack = Gtk.Stack()
         self.editor_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.editor_stack.set_transition_duration(120)
@@ -170,13 +210,36 @@ class NotesPanel(Gtk.Window):
         editor_box.pack_start(editor_actions, False, False, 0)
         editor_box.pack_start(self.editor_stack, True, True, 0)
 
-        # botón nueva nota centrado abajo
-        bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        # bottom bar — shared container, widgets toggled per mode
+        bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         bottom_bar.set_name("bottom-bar")
-        btn_new = Gtk.Button(label="+ New note")
-        btn_new.set_name("btn-new")
-        btn_new.connect("clicked", self._on_new_note)
-        bottom_bar.set_center_widget(btn_new)
+
+        self.btn_new = Gtk.Button(label="+ New note")
+        self.btn_new.set_name("btn-new")
+        self.btn_new.connect("clicked", self._on_new_note)
+
+        self.btn_open_trash = Gtk.Button()
+        self.btn_open_trash.set_name("btn-action")
+        self.btn_open_trash.set_image(
+            Gtk.Image.new_from_icon_name("user-trash-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        )
+        self.btn_open_trash.set_tooltip_text("Trash")
+        self.btn_open_trash.connect("clicked", self._on_open_trash)
+
+        self.btn_back = Gtk.Button(label="← Back")
+        self.btn_back.set_name("btn-back")
+        self.btn_back.connect("clicked", self._on_close_trash)
+        self.btn_back.set_no_show_all(True)
+
+        self.btn_empty_trash = Gtk.Button(label="Empty trash")
+        self.btn_empty_trash.set_name("btn-empty-trash")
+        self.btn_empty_trash.connect("clicked", self._on_empty_trash)
+        self.btn_empty_trash.set_no_show_all(True)
+
+        bottom_bar.pack_start(self.btn_back, False, False, 0)
+        bottom_bar.pack_start(self.btn_new, True, True, 0)
+        bottom_bar.pack_end(self.btn_empty_trash, False, False, 0)
+        bottom_bar.pack_end(self.btn_open_trash, False, False, 0)
 
         root.pack_start(search_box, False, False, 0)
         root.pack_start(self.status_label, False, False, 0)
@@ -230,6 +293,24 @@ class NotesPanel(Gtk.Window):
         count = len(self._notes)
         self.status_label.set_text(f"{count} note{'s' if count != 1 else ''}")
 
+    def _refresh_trash(self):
+        for row in self.list_box.get_children():
+            self.list_box.remove(row)
+
+        trash_notes = notes_mod.list_trash()
+        for note in trash_notes:
+            self.list_box.add(TrashRow(note, self._restore_note, self._delete_permanently))
+
+        count = len(trash_notes)
+        self.status_label.set_text(f"Trash · {count} note{'s' if count != 1 else ''}")
+
+    def _clear_editor(self):
+        buf = self.text_view.get_buffer()
+        buf.handler_block_by_func(self._on_content_changed)
+        buf.set_text("")
+        buf.handler_unblock_by_func(self._on_content_changed)
+        self._current_path = None
+
     def _load_note_in_editor(self, note: dict):
         self._current_path = note["path"]
         buf = self.text_view.get_buffer()
@@ -256,10 +337,11 @@ class NotesPanel(Gtk.Window):
         return False
 
     def _on_search(self, entry):
-        self._refresh_notes(entry.get_text())
+        if not self._trash_mode:
+            self._refresh_notes(entry.get_text())
 
     def _on_row_activated(self, listbox, row):
-        if isinstance(row, NoteRow):
+        if hasattr(row, "note"):
             self._load_note_in_editor(row.note)
 
     def _on_new_note(self, btn):
@@ -269,6 +351,52 @@ class NotesPanel(Gtk.Window):
         buf.set_text("# New note\n\n")
         buf.handler_unblock_by_func(self._on_content_changed)
         self.text_view.grab_focus()
+
+    # --- trash ---
+
+    def _on_open_trash(self, btn):
+        if self._preview_mode:
+            self._on_toggle_preview(None)
+        self._trash_mode = True
+        self.text_view.set_editable(False)
+        self._clear_editor()
+        self.btn_new.hide()
+        self.btn_open_trash.hide()
+        self.btn_back.show()
+        self.btn_empty_trash.show()
+        self.search.set_sensitive(False)
+        self._refresh_trash()
+
+    def _on_close_trash(self, btn):
+        self._trash_mode = False
+        self.text_view.set_editable(True)
+        self._clear_editor()
+        self.btn_back.hide()
+        self.btn_empty_trash.hide()
+        self.btn_new.show()
+        self.btn_open_trash.show()
+        self.search.set_sensitive(True)
+        self._refresh_notes(self.search.get_text())
+
+    def _restore_note(self, path: Path):
+        notes_mod.restore_note(path)
+        if self._current_path == path:
+            self._clear_editor()
+        self._refresh_trash()
+
+    def _delete_permanently(self, path: Path):
+        if path.exists():
+            path.unlink()
+        if self._current_path == path:
+            self._clear_editor()
+        self._refresh_trash()
+
+    def _on_empty_trash(self, btn):
+        notes_mod.empty_trash()
+        self._clear_editor()
+        self._refresh_trash()
+
+    # --- preview ---
 
     def _theme_hex(self, name: str, fallback: str) -> str:
         found, c = self.get_style_context().lookup_color(name)
@@ -382,11 +510,7 @@ hr {{ border: none; border-top: 1px solid {border}; margin: 1em 0; }}
     def _delete_note_by_path(self, path):
         notes_mod.delete_note(path)
         if self._current_path == path:
-            self._current_path = None
-            buf = self.text_view.get_buffer()
-            buf.handler_block_by_func(self._on_content_changed)
-            buf.set_text("")
-            buf.handler_unblock_by_func(self._on_content_changed)
+            self._clear_editor()
         self._refresh_notes(self.search.get_text())
 
     def _on_key_press(self, widget, event):
@@ -394,14 +518,12 @@ hr {{ border: none; border-top: 1px solid {border}; margin: 1em 0; }}
             self._hide()
 
     def _on_focus_out(self, widget, event):
-        # delay para dar tiempo a que menús emergentes devuelvan el foco
         if self._hide_timeout:
             GLib.source_remove(self._hide_timeout)
         self._hide_timeout = GLib.timeout_add(200, self._hide_after_focus_out)
         return False
 
     def _on_focus_in(self, widget, event):
-        # el foco volvió (p.ej. menú contextual cerrado) — cancelar el hide pendiente
         if self._hide_timeout:
             GLib.source_remove(self._hide_timeout)
             self._hide_timeout = None
@@ -414,6 +536,8 @@ hr {{ border: none; border-top: 1px solid {border}; margin: 1em 0; }}
 
     def _hide(self):
         self._hidden_at = time.monotonic()
+        if self._trash_mode:
+            self._on_close_trash(None)
         self.hide()
 
     def _request_focus(self):

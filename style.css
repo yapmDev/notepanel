@@ -140,6 +140,50 @@
     border-top: 1px solid @borders;
 }
 
+#btn-back {
+    background-color: transparent;
+    color: @theme_fg_color;
+    border: 1px solid @borders;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+}
+
+#btn-back:hover {
+    background-color: shade(@theme_bg_color, 0.95);
+    border-color: @unfocused_borders;
+}
+
+#btn-empty-trash {
+    background-color: @error_color;
+    color: @theme_selected_fg_color;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+#btn-empty-trash:hover {
+    background-color: shade(@error_color, 1.1);
+}
+
+.row-restore-btn {
+    background-color: transparent;
+    color: mix(@theme_fg_color, @theme_bg_color, 0.6);
+    border: none;
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 12px;
+    min-width: 0;
+    min-height: 0;
+}
+
+.row-restore-btn:hover {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+}
+
 #status-label {
     color: mix(@theme_fg_color, @theme_bg_color, 0.5);
     font-size: 11px;

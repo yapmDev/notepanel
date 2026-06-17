@@ -1,13 +1,14 @@
-import os
 import re
 from datetime import datetime
 from pathlib import Path
 
 NOTES_DIR = Path.home() / ".local" / "share" / "notepanel"
+TRASH_DIR = NOTES_DIR / ".trash"
 
 
 def ensure_dir():
     NOTES_DIR.mkdir(parents=True, exist_ok=True)
+    TRASH_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def slug(title: str) -> str:
@@ -17,22 +18,34 @@ def slug(title: str) -> str:
     return s or "note"
 
 
+def _note_from_path(path: Path) -> dict:
+    content = path.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    title = lines[0].lstrip("# ").strip() if lines else path.stem
+    preview = " ".join(lines[1:])[:80].strip() if len(lines) > 1 else ""
+    return {
+        "path": path,
+        "title": title,
+        "preview": preview,
+        "content": content,
+        "mtime": path.stat().st_mtime,
+    }
+
+
 def list_notes() -> list[dict]:
     ensure_dir()
-    notes = []
-    for path in sorted(NOTES_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
-        content = path.read_text(encoding="utf-8")
-        lines = content.splitlines()
-        title = lines[0].lstrip("# ").strip() if lines else path.stem
-        preview = " ".join(lines[1:])[:80].strip() if len(lines) > 1 else ""
-        notes.append({
-            "path": path,
-            "title": title,
-            "preview": preview,
-            "content": content,
-            "mtime": path.stat().st_mtime,
-        })
-    return notes
+    return [
+        _note_from_path(p)
+        for p in sorted(NOTES_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    ]
+
+
+def list_trash() -> list[dict]:
+    ensure_dir()
+    return [
+        _note_from_path(p)
+        for p in sorted(TRASH_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+    ]
 
 
 def search_notes(query: str) -> list[dict]:
@@ -50,7 +63,27 @@ def save_note(path: Path | None, title: str, content: str) -> Path:
 
 
 def delete_note(path: Path):
-    if path.exists():
+    if not path.exists():
+        return
+    ensure_dir()
+    dest = TRASH_DIR / path.name
+    if dest.exists():
+        dest = TRASH_DIR / f"{path.stem}-{int(datetime.now().timestamp())}{path.suffix}"
+    path.rename(dest)
+
+
+def restore_note(path: Path) -> Path:
+    ensure_dir()
+    dest = NOTES_DIR / path.name
+    if dest.exists():
+        dest = NOTES_DIR / f"{path.stem}-{int(datetime.now().timestamp())}{path.suffix}"
+    path.rename(dest)
+    return dest
+
+
+def empty_trash():
+    ensure_dir()
+    for path in TRASH_DIR.glob("*.md"):
         path.unlink()
 
 
