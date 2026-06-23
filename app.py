@@ -35,13 +35,16 @@ class NotesApp:
         menu.show_all()
         menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, time)
 
+    def _open_quick_capture(self):
+        dialog = QuickCaptureDialog()
+        dialog.show_all()
+        dialog.present()
+
     def _setup_signals(self):
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self._on_sigusr1)
 
     def _on_sigusr1(self):
-        dialog = QuickCaptureDialog()
-        dialog.show_all()
-        dialog.present()
+        self._open_quick_capture()
         return GLib.SOURCE_CONTINUE
 
     def run(self):
