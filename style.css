@@ -224,3 +224,24 @@
     color: mix(@theme_fg_color, @theme_bg_color, 0.5);
     font-size: 11px;
 }
+
+#settings-dialog {
+    background-color: @theme_bg_color;
+    border: 1px solid @borders;
+    border-radius: 10px;
+}
+
+#settings-body {
+    padding: 16px 18px;
+}
+
+#settings-title {
+    color: @theme_fg_color;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+#settings-label {
+    color: mix(@theme_fg_color, @theme_bg_color, 0.4);
+    font-size: 12px;
+}

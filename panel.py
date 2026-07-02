@@ -9,7 +9,7 @@ import time
 import notes as notes_mod
 import preview as preview_mod
 import geometry as geometry_mod
-from widgets import NoteRow, TrashRow
+from widgets import NoteRow, TrashRow, SettingsDialog
 
 
 class NotesPanel(Gtk.Window):
@@ -63,6 +63,12 @@ class NotesPanel(Gtk.Window):
         self.search.set_halign(Gtk.Align.FILL)
         self.search.connect("search-changed", self._on_search)
         search_box.set_center_widget(self.search)
+
+        self.btn_settings = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        self.btn_settings.set_name("btn-action")
+        self.btn_settings.set_tooltip_text("Settings")
+        self.btn_settings.connect("clicked", self._on_open_settings)
+        search_box.pack_end(self.btn_settings, False, False, 0)
 
         self.status_label = Gtk.Label(label="", xalign=0)
         self.status_label.set_name("status-label")
@@ -239,6 +245,15 @@ class NotesPanel(Gtk.Window):
         self._current_path = notes_mod.save_note(self._current_path, title, content)
         self._refresh_notes(self.search.get_text())
         return False
+
+    def _on_open_settings(self, btn):
+        dialog = SettingsDialog(self._apply_settings)
+        dialog.show_all()
+        dialog.present()
+
+    def _apply_settings(self, new_settings):
+        x, y, w, h = geometry_mod.get_target_geometry()
+        geometry_mod.apply_geometry(self, x, y, w, h)
 
     def _on_search(self, entry):
         if not self._trash_mode:
