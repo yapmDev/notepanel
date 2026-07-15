@@ -12,15 +12,38 @@
     padding: 10px 12px 4px 12px;
 }
 
+/* ============================================================
+   Shared control sizing — the one place to resize every text
+   field and action control in the app. Height reference: the
+   Trash button (#btn-action). Icon-only actions also share a
+   fixed width here; text-label buttons size to their own label.
+   ============================================================ */
+#btn-action,
+#btn-new,
+#btn-back,
+#btn-empty-trash,
+#search-entry,
+#find-entry {
+    min-height: 30px;
+}
+
+#btn-action {
+    min-width: 30px;
+}
+
+#search-entry,
+#find-entry {
+    min-width: 200px;
+}
+
 #search-entry {
     background-color: @theme_base_color;
     color: @theme_text_color;
     border: 1px solid @borders;
     border-radius: 8px;
-    padding: 8px 12px;
+    padding: 0 12px;
     font-size: 14px;
     caret-color: @theme_selected_bg_color;
-    min-width: 200px;
 }
 
 #search-entry:focus {
@@ -76,7 +99,7 @@
     color: mix(@theme_fg_color, @theme_bg_color, 0.4);
     border: 1px solid @borders;
     border-radius: 5px;
-    padding: 2px 10px;
+    padding: 0 10px;
     font-size: 12px;
 }
 
@@ -97,7 +120,7 @@
     color: @theme_text_color;
     border: 1px solid @borders;
     border-radius: 6px;
-    padding: 4px 8px;
+    padding: 0 8px;
     font-size: 12px;
 }
 
@@ -134,7 +157,7 @@
     color: @theme_selected_fg_color;
     border: none;
     border-radius: 8px;
-    padding: 6px 20px;
+    padding: 0 20px;
     font-size: 13px;
     font-weight: bold;
 }
@@ -143,15 +166,19 @@
     background-color: shade(@theme_selected_bg_color, 1.15);
 }
 
+.row-delete-btn,
+.row-restore-btn {
+    min-width: 22px;
+    min-height: 22px;
+}
+
 .row-delete-btn {
     background-color: transparent;
     color: mix(@theme_fg_color, @theme_bg_color, 0.6);
     border: none;
     border-radius: 6px;
-    padding: 2px 6px;
+    padding: 0;
     font-size: 12px;
-    min-width: 0;
-    min-height: 0;
 }
 
 .row-delete-btn:hover {
@@ -170,7 +197,7 @@
     color: @theme_fg_color;
     border: 1px solid @borders;
     border-radius: 8px;
-    padding: 6px 14px;
+    padding: 0 14px;
     font-size: 13px;
 }
 
@@ -184,7 +211,7 @@
     color: @theme_selected_fg_color;
     border: none;
     border-radius: 8px;
-    padding: 6px 14px;
+    padding: 0 14px;
     font-size: 13px;
     font-weight: bold;
 }
@@ -198,10 +225,8 @@
     color: mix(@theme_fg_color, @theme_bg_color, 0.6);
     border: none;
     border-radius: 6px;
-    padding: 2px 6px;
+    padding: 0;
     font-size: 12px;
-    min-width: 0;
-    min-height: 0;
 }
 
 .row-restore-btn:hover {
