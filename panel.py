@@ -87,6 +87,8 @@ class NotesPanel(Gtk.Window):
         editor_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         editor_box.set_name("editor-box")
         editor_box.set_vexpand(True)
+        editor_box.set_no_show_all(True)
+        self.editor_box = editor_box
 
         editor_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         editor_actions.set_name("editor-actions")
@@ -194,6 +196,12 @@ class NotesPanel(Gtk.Window):
         editor_box.pack_start(self.find_revealer, False, False, 0)
         editor_box.pack_start(self.editor_stack, True, True, 0)
 
+        # editor_box itself is no_show_all (toggled via show()/hide()), which
+        # blocks show_all() from ever reaching its children — show them once
+        # here so they're ready whenever editor_box becomes visible.
+        for child in editor_box.get_children():
+            child.show_all()
+
         # bottom bar — shared container, widgets toggled per mode
         bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         bottom_bar.set_name("bottom-bar")
@@ -284,9 +292,11 @@ class NotesPanel(Gtk.Window):
         buf.handler_unblock_by_func(self._on_content_changed)
         self._current_path = None
         notes_mod.set_last_note_path(None)
+        self.editor_box.hide()
 
     def _load_note_in_editor(self, note: dict):
         self._close_find_bar()
+        self.editor_box.show()
         self._current_path = note["path"]
         notes_mod.set_last_note_path(self._current_path)
         buf = self.text_view.get_buffer()
@@ -334,6 +344,7 @@ class NotesPanel(Gtk.Window):
 
     def _on_new_note(self, btn):
         self._close_find_bar()
+        self.editor_box.show()
         self._current_path = None
         notes_mod.set_last_note_path(None)
         buf = self.text_view.get_buffer()
