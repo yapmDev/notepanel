@@ -34,6 +34,7 @@ class NotesPanel(Gtk.Window):
         self._load_css()
         self._build_ui()
         self._refresh_notes()
+        self._restore_last_note()
         self._position_panel()
 
         self.connect("key-press-event", self._on_key_press)
@@ -256,6 +257,14 @@ class NotesPanel(Gtk.Window):
         count = len(self._notes)
         self.status_label.set_text(f"{count} note{'s' if count != 1 else ''}")
 
+    def _restore_last_note(self):
+        last_path = notes_mod.get_last_note_path()
+        if not last_path:
+            return
+        note = next((n for n in self._notes if n["path"] == last_path), None)
+        if note:
+            self._load_note_in_editor(note)
+
     def _refresh_trash(self):
         for row in self.list_box.get_children():
             self.list_box.remove(row)
@@ -274,10 +283,12 @@ class NotesPanel(Gtk.Window):
         buf.set_text("")
         buf.handler_unblock_by_func(self._on_content_changed)
         self._current_path = None
+        notes_mod.set_last_note_path(None)
 
     def _load_note_in_editor(self, note: dict):
         self._close_find_bar()
         self._current_path = note["path"]
+        notes_mod.set_last_note_path(self._current_path)
         buf = self.text_view.get_buffer()
         buf.handler_block_by_func(self._on_content_changed)
         buf.set_text(note["content"])
@@ -300,6 +311,7 @@ class NotesPanel(Gtk.Window):
         lines = content.splitlines()
         title = lines[0].lstrip("# ").strip() if lines else "Untitled"
         self._current_path = notes_mod.save_note(self._current_path, title, content)
+        notes_mod.set_last_note_path(self._current_path)
         self._refresh_notes(self.search.get_text())
         return False
 
@@ -323,6 +335,7 @@ class NotesPanel(Gtk.Window):
     def _on_new_note(self, btn):
         self._close_find_bar()
         self._current_path = None
+        notes_mod.set_last_note_path(None)
         buf = self.text_view.get_buffer()
         buf.handler_block_by_func(self._on_content_changed)
         buf.set_text("# New note\n\n")

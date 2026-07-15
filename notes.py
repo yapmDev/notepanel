@@ -4,6 +4,7 @@ from pathlib import Path
 
 NOTES_DIR = Path.home() / ".local" / "share" / "notepanel"
 TRASH_DIR = NOTES_DIR / ".trash"
+_LAST_NOTE_PATH = NOTES_DIR / ".last-note"
 
 _FILENAME_RE = re.compile(r"^(.*)-(\d+)\.md$")
 
@@ -114,3 +115,20 @@ def empty_trash():
 
 def new_note_content(title: str = "New note") -> str:
     return f"# {title}\n\n"
+
+
+def get_last_note_path() -> Path | None:
+    try:
+        raw = _LAST_NOTE_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    path = Path(raw) if raw else None
+    return path if path and path.exists() else None
+
+
+def set_last_note_path(path: Path | None):
+    ensure_dir()
+    if path is None:
+        _LAST_NOTE_PATH.unlink(missing_ok=True)
+    else:
+        _LAST_NOTE_PATH.write_text(str(path), encoding="utf-8")
