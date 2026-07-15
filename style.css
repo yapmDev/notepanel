@@ -86,6 +86,31 @@
     border-color: @theme_selected_bg_color;
 }
 
+#find-bar {
+    padding: 6px 8px;
+    border-bottom: 1px solid @borders;
+    background-color: @theme_bg_color;
+}
+
+#find-entry {
+    background-color: @theme_base_color;
+    color: @theme_text_color;
+    border: 1px solid @borders;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+#find-entry:focus {
+    border-color: @theme_selected_bg_color;
+}
+
+#find-count {
+    color: mix(@theme_fg_color, @theme_bg_color, 0.5);
+    font-size: 11px;
+    padding: 0 4px;
+}
+
 #editor-box scrolledwindow,
 #editor-box scrolledwindow viewport {
     background-color: transparent;

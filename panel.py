@@ -100,6 +100,11 @@ class NotesPanel(Gtk.Window):
         btn_select_all.set_tooltip_text("Select all")
         btn_select_all.connect("clicked", self._on_select_all)
 
+        self.btn_find = Gtk.Button.new_from_icon_name("edit-find-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        self.btn_find.set_name("btn-action")
+        self.btn_find.set_tooltip_text("Find in note")
+        self.btn_find.connect("clicked", self._on_toggle_find)
+
         self._preview_mode = False
         self.btn_preview = Gtk.Button.new_from_icon_name("view-reveal-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
         self.btn_preview.set_name("btn-action")
@@ -108,7 +113,51 @@ class NotesPanel(Gtk.Window):
 
         editor_actions.pack_start(btn_copy, False, False, 0)
         editor_actions.pack_start(btn_select_all, False, False, 0)
+        editor_actions.pack_start(self.btn_find, False, False, 0)
         editor_actions.pack_end(self.btn_preview, False, False, 0)
+
+        find_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        find_bar.set_name("find-bar")
+
+        self.find_entry = Gtk.SearchEntry()
+        self.find_entry.set_name("find-entry")
+        self.find_entry.set_placeholder_text("Find in note...")
+        self.find_entry.set_hexpand(True)
+        self.find_entry.connect("search-changed", self._on_find_changed)
+        self.find_entry.connect("activate", self._on_find_next)
+        self.find_entry.connect("key-press-event", self._on_find_key_press)
+
+        self.find_count_label = Gtk.Label(label="", xalign=0)
+        self.find_count_label.set_name("find-count")
+
+        btn_find_prev = Gtk.Button.new_from_icon_name("go-up-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        btn_find_prev.set_name("btn-action")
+        btn_find_prev.set_tooltip_text("Previous match")
+        btn_find_prev.connect("clicked", self._on_find_prev)
+
+        btn_find_next = Gtk.Button.new_from_icon_name("go-down-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        btn_find_next.set_name("btn-action")
+        btn_find_next.set_tooltip_text("Next match")
+        btn_find_next.connect("clicked", self._on_find_next)
+
+        btn_find_close = Gtk.Button.new_from_icon_name("window-close-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        btn_find_close.set_name("btn-action")
+        btn_find_close.set_tooltip_text("Close")
+        btn_find_close.connect("clicked", self._on_toggle_find)
+
+        find_bar.pack_start(self.find_entry, True, True, 0)
+        find_bar.pack_start(self.find_count_label, False, False, 0)
+        find_bar.pack_start(btn_find_prev, False, False, 0)
+        find_bar.pack_start(btn_find_next, False, False, 0)
+        find_bar.pack_start(btn_find_close, False, False, 0)
+
+        self.find_revealer = Gtk.Revealer()
+        self.find_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
+        self.find_revealer.set_reveal_child(False)
+        self.find_revealer.add(find_bar)
+
+        self._find_matches: list[tuple[int, int]] = []
+        self._find_index = -1
 
         self.editor_stack = Gtk.Stack()
         self.editor_stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
@@ -122,7 +171,12 @@ class NotesPanel(Gtk.Window):
         self.text_view = Gtk.TextView()
         self.text_view.set_name("editor-text")
         self.text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        self.text_view.get_buffer().connect("changed", self._on_content_changed)
+        text_buf = self.text_view.get_buffer()
+        text_buf.connect("changed", self._on_content_changed)
+        self.find_tag = text_buf.create_tag("find-match", background="#ffe066", foreground="#000000")
+        self.find_tag_current = text_buf.create_tag(
+            "find-match-current", background="#ff9800", foreground="#000000"
+        )
         text_scroll.add(self.text_view)
 
         wk_settings = WebKit2.Settings()
@@ -136,6 +190,7 @@ class NotesPanel(Gtk.Window):
         self.editor_stack.set_visible_child_name("editor")
 
         editor_box.pack_start(editor_actions, False, False, 0)
+        editor_box.pack_start(self.find_revealer, False, False, 0)
         editor_box.pack_start(self.editor_stack, True, True, 0)
 
         # bottom bar — shared container, widgets toggled per mode
@@ -213,6 +268,7 @@ class NotesPanel(Gtk.Window):
         self.status_label.set_text(f"Trash · {count} note{'s' if count != 1 else ''}")
 
     def _clear_editor(self):
+        self._close_find_bar()
         buf = self.text_view.get_buffer()
         buf.handler_block_by_func(self._on_content_changed)
         buf.set_text("")
@@ -220,6 +276,7 @@ class NotesPanel(Gtk.Window):
         self._current_path = None
 
     def _load_note_in_editor(self, note: dict):
+        self._close_find_bar()
         self._current_path = note["path"]
         buf = self.text_view.get_buffer()
         buf.handler_block_by_func(self._on_content_changed)
@@ -264,6 +321,7 @@ class NotesPanel(Gtk.Window):
             self._load_note_in_editor(row.note)
 
     def _on_new_note(self, btn):
+        self._close_find_bar()
         self._current_path = None
         buf = self.text_view.get_buffer()
         buf.handler_block_by_func(self._on_content_changed)
@@ -319,6 +377,8 @@ class NotesPanel(Gtk.Window):
 
     def _on_toggle_preview(self, btn):
         self._preview_mode = not self._preview_mode
+        self._close_find_bar()
+        self.btn_find.set_sensitive(not self._preview_mode)
         if self._preview_mode:
             buf = self.text_view.get_buffer()
             content = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
@@ -337,6 +397,83 @@ class NotesPanel(Gtk.Window):
             )
             self.btn_preview.set_tooltip_text("Preview")
 
+    # --- find in note ---
+
+    def _on_toggle_find(self, btn):
+        if self.find_revealer.get_reveal_child():
+            self._close_find_bar()
+        else:
+            self.find_revealer.set_reveal_child(True)
+            self.find_entry.grab_focus()
+
+    def _close_find_bar(self):
+        self.find_revealer.set_reveal_child(False)
+        self._clear_find_highlights()
+        self.find_entry.set_text("")
+        self.find_count_label.set_text("")
+
+    def _clear_find_highlights(self):
+        buf = self.text_view.get_buffer()
+        buf.remove_tag(self.find_tag, buf.get_start_iter(), buf.get_end_iter())
+        buf.remove_tag(self.find_tag_current, buf.get_start_iter(), buf.get_end_iter())
+        self._find_matches = []
+        self._find_index = -1
+
+    def _on_find_changed(self, entry):
+        self._run_find(entry.get_text())
+
+    def _run_find(self, query: str):
+        buf = self.text_view.get_buffer()
+        self._clear_find_highlights()
+        if not query:
+            self.find_count_label.set_text("")
+            return
+        start = buf.get_start_iter()
+        while True:
+            match = start.forward_search(query, Gtk.TextSearchFlags.CASE_INSENSITIVE, None)
+            if not match:
+                break
+            match_start, match_end = match
+            buf.apply_tag(self.find_tag, match_start, match_end)
+            self._find_matches.append((match_start.get_offset(), match_end.get_offset()))
+            start = match_end
+        if self._find_matches:
+            self._goto_find_match(0)
+        else:
+            self.find_count_label.set_text("0/0")
+
+    def _goto_find_match(self, index: int):
+        if not self._find_matches:
+            return
+        buf = self.text_view.get_buffer()
+        if self._find_index != -1:
+            s, e = self._find_matches[self._find_index]
+            buf.remove_tag(self.find_tag_current, buf.get_iter_at_offset(s), buf.get_iter_at_offset(e))
+        self._find_index = index % len(self._find_matches)
+        s, e = self._find_matches[self._find_index]
+        start_iter = buf.get_iter_at_offset(s)
+        end_iter = buf.get_iter_at_offset(e)
+        buf.apply_tag(self.find_tag_current, start_iter, end_iter)
+        buf.place_cursor(start_iter)
+        self.text_view.scroll_to_iter(start_iter, 0.1, False, 0, 0)
+        self.find_count_label.set_text(f"{self._find_index + 1}/{len(self._find_matches)}")
+
+    def _on_find_next(self, *_args):
+        if self._find_matches:
+            self._goto_find_match(self._find_index + 1)
+
+    def _on_find_prev(self, *_args):
+        if self._find_matches:
+            self._goto_find_match(self._find_index - 1)
+
+    def _on_find_key_press(self, entry, event):
+        if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            mods = event.state & Gtk.accelerator_get_default_mod_mask()
+            if mods == Gdk.ModifierType.SHIFT_MASK:
+                self._on_find_prev()
+                return True
+        return False
+
     def _on_copy(self, btn):
         buf = self.text_view.get_buffer()
         if buf.get_has_selection():
@@ -352,6 +489,8 @@ class NotesPanel(Gtk.Window):
 
     def _on_content_changed(self, buf):
         self._schedule_save()
+        if self.find_revealer.get_reveal_child() and self.find_entry.get_text():
+            self._run_find(self.find_entry.get_text())
 
     def _delete_note_by_path(self, path):
         notes_mod.delete_note(path)
@@ -361,6 +500,9 @@ class NotesPanel(Gtk.Window):
 
     def _on_key_press(self, widget, event):
         if event.keyval == Gdk.KEY_Escape:
+            if self.find_revealer.get_reveal_child():
+                self._close_find_bar()
+                return True
             self._hide()
 
     def _on_focus_out(self, widget, event):
