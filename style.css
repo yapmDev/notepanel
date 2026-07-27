@@ -155,7 +155,7 @@
 #btn-new {
     background-color: @theme_selected_bg_color;
     color: @theme_selected_fg_color;
-    border: none;
+    border: 1px solid @borders;
     border-radius: 8px;
     padding: 0 20px;
     font-size: 13px;
@@ -175,7 +175,7 @@
 .row-delete-btn {
     background-color: transparent;
     color: mix(@theme_fg_color, @theme_bg_color, 0.6);
-    border: none;
+    border: 1px solid @borders;
     border-radius: 6px;
     padding: 0;
     font-size: 12px;
@@ -209,7 +209,7 @@
 #btn-empty-trash {
     background-color: @error_color;
     color: @theme_selected_fg_color;
-    border: none;
+    border: 1px solid @borders;
     border-radius: 8px;
     padding: 0 14px;
     font-size: 13px;
@@ -223,7 +223,7 @@
 .row-restore-btn {
     background-color: transparent;
     color: mix(@theme_fg_color, @theme_bg_color, 0.6);
-    border: none;
+    border: 1px solid @borders;
     border-radius: 6px;
     padding: 0;
     font-size: 12px;

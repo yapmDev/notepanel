@@ -37,16 +37,42 @@ class NoteRow(Gtk.ListBoxRow):
             preview.set_ellipsize(3)
             text_box.pack_start(preview, False, False, 0)
 
-        del_btn = Gtk.Button(label="✕")
-        del_btn.get_style_context().add_class("row-delete-btn")
-        del_btn.set_valign(Gtk.Align.CENTER)
-        del_btn.connect("clicked", lambda _: on_delete(note["path"]))
+        del_icon_box = Gtk.Box()
+        del_icon_box.pack_start(
+            Gtk.Image.new_from_icon_name("user-trash-symbolic", Gtk.IconSize.SMALL_TOOLBAR),
+            True, True, 0,
+        )
+
+        self.del_btn = Gtk.Button()
+        self.del_btn.add(del_icon_box)
+        self.del_btn.get_style_context().add_class("row-delete-btn")
+        self.del_btn.set_valign(Gtk.Align.CENTER)
+        self.del_btn.connect("clicked", lambda _: on_delete(note["path"]))
 
         row_box.pack_start(text_box, True, True, 0)
-        row_box.pack_start(del_btn, False, False, 0)
+        row_box.pack_start(self.del_btn, False, False, 0)
 
-        self.add(row_box)
+        event_box = Gtk.EventBox()
+        event_box.add(row_box)
+        event_box.connect("enter-notify-event", self._on_enter)
+        event_box.connect("leave-notify-event", self._on_leave)
+
+        self.add(event_box)
         self.show_all()
+        # set after show_all() so the icon inside keeps its visible flag;
+        # no_show_all only needs to stop future show_all() calls from
+        # re-revealing the button itself
+        self.del_btn.set_no_show_all(True)
+        self.del_btn.hide()
+
+    def _on_enter(self, widget, event):
+        self.del_btn.show()
+        return False
+
+    def _on_leave(self, widget, event):
+        if event.detail != Gdk.NotifyType.INFERIOR:
+            self.del_btn.hide()
+        return False
 
 
 class TrashRow(Gtk.ListBoxRow):
@@ -78,7 +104,14 @@ class TrashRow(Gtk.ListBoxRow):
         btn_restore.set_valign(Gtk.Align.CENTER)
         btn_restore.connect("clicked", lambda _: on_restore(note["path"]))
 
-        btn_del = Gtk.Button(label="✕")
+        del_icon_box = Gtk.Box()
+        del_icon_box.pack_start(
+            Gtk.Image.new_from_icon_name("edit-delete-symbolic", Gtk.IconSize.SMALL_TOOLBAR),
+            True, True, 0,
+        )
+
+        btn_del = Gtk.Button()
+        btn_del.add(del_icon_box)
         btn_del.get_style_context().add_class("row-delete-btn")
         btn_del.set_tooltip_text("Delete permanently")
         btn_del.set_valign(Gtk.Align.CENTER)
