@@ -10,6 +10,7 @@ DEFAULTS = {
     "corner": "top-right",
     "width_percent": 20,
     "height_percent": 100,
+    "hide_on_focus_out": False,
 }
 
 
@@ -27,6 +28,7 @@ def load_settings() -> dict:
         settings["corner"] = DEFAULTS["corner"]
     settings["width_percent"] = min(100, max(1, int(settings["width_percent"])))
     settings["height_percent"] = min(100, max(1, int(settings["height_percent"])))
+    settings["hide_on_focus_out"] = bool(settings["hide_on_focus_out"])
     return settings
 
 
@@ -36,5 +38,6 @@ def save_settings(settings: dict):
         "corner": settings.get("corner", DEFAULTS["corner"]),
         "width_percent": settings.get("width_percent", DEFAULTS["width_percent"]),
         "height_percent": settings.get("height_percent", DEFAULTS["height_percent"]),
+        "hide_on_focus_out": settings.get("hide_on_focus_out", DEFAULTS["hide_on_focus_out"]),
     }
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")

@@ -9,6 +9,7 @@ import time
 import notes as notes_mod
 import preview as preview_mod
 import geometry as geometry_mod
+import settings as settings_mod
 from widgets import NoteRow, TrashRow, SettingsDialog
 
 
@@ -65,11 +66,11 @@ class NotesPanel(Gtk.Window):
         self.search.connect("search-changed", self._on_search)
         search_box.set_center_widget(self.search)
 
-        self.btn_settings = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        self.btn_settings.set_name("btn-action")
-        self.btn_settings.set_tooltip_text("Settings")
-        self.btn_settings.connect("clicked", self._on_open_settings)
-        search_box.pack_end(self.btn_settings, False, False, 0)
+        self.btn_close_panel = Gtk.Button.new_from_icon_name("window-close-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        self.btn_close_panel.set_name("btn-action")
+        self.btn_close_panel.set_tooltip_text("Close")
+        self.btn_close_panel.connect("clicked", lambda _: self._hide())
+        search_box.pack_end(self.btn_close_panel, False, False, 0)
 
         self.status_label = Gtk.Label(label="", xalign=0)
         self.status_label.set_name("status-label")
@@ -218,6 +219,11 @@ class NotesPanel(Gtk.Window):
         self.btn_open_trash.set_tooltip_text("Trash")
         self.btn_open_trash.connect("clicked", self._on_open_trash)
 
+        self.btn_settings = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        self.btn_settings.set_name("btn-action")
+        self.btn_settings.set_tooltip_text("Settings")
+        self.btn_settings.connect("clicked", self._on_open_settings)
+
         self.btn_back = Gtk.Button(label="← Back")
         self.btn_back.set_name("btn-back")
         self.btn_back.connect("clicked", self._on_close_trash)
@@ -232,6 +238,7 @@ class NotesPanel(Gtk.Window):
         bottom_bar.pack_start(self.btn_new, True, True, 0)
         bottom_bar.pack_end(self.btn_empty_trash, False, False, 0)
         bottom_bar.pack_end(self.btn_open_trash, False, False, 0)
+        bottom_bar.pack_end(self.btn_settings, False, False, 0)
 
         root.pack_start(search_box, False, False, 0)
         root.pack_start(self.status_label, False, False, 0)
@@ -530,6 +537,8 @@ class NotesPanel(Gtk.Window):
             self._hide()
 
     def _on_focus_out(self, widget, event):
+        if not settings_mod.load_settings()["hide_on_focus_out"]:
+            return False
         if self._hide_timeout:
             GLib.source_remove(self._hide_timeout)
         self._hide_timeout = GLib.timeout_add(200, self._hide_after_focus_out)

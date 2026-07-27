@@ -234,6 +234,10 @@ class SettingsDialog(Gtk.Window):
         grid.attach(self.height_spin, 1, 2, 1, 1)
         root.pack_start(grid, False, False, 0)
 
+        self.hide_on_focus_out_check = Gtk.CheckButton(label="Hide panel when it loses focus")
+        self.hide_on_focus_out_check.set_active(self._prefs["hide_on_focus_out"])
+        root.pack_start(self.hide_on_focus_out_check, False, False, 0)
+
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         btn_cancel = Gtk.Button(label="Cancel")
         btn_cancel.set_name("btn-back")
@@ -260,6 +264,7 @@ class SettingsDialog(Gtk.Window):
             "corner": self.corner_combo.get_active_id() or settings_mod.DEFAULTS["corner"],
             "width_percent": int(self.width_spin.get_value()),
             "height_percent": int(self.height_spin.get_value()),
+            "hide_on_focus_out": self.hide_on_focus_out_check.get_active(),
         }
         settings_mod.save_settings(new_settings)
         if self._on_save_cb:
