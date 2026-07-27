@@ -19,7 +19,7 @@ class NotesPanel(Gtk.Window):
         self.set_name("panel-root")
         self.set_title("Notes")
         self.set_decorated(True)
-        self.set_resizable(False)
+        self.set_resizable(True)
         self.set_skip_taskbar_hint(True)
         self.set_skip_pager_hint(True)
         self.set_keep_above(True)
@@ -31,6 +31,7 @@ class NotesPanel(Gtk.Window):
         self._pending_position = False
         self._hidden_at: float = 0.0
         self._hide_timeout: int | None = None
+        self._geo_save_timeout: int | None = None
         self._trash_mode = False
 
         self._load_css()
@@ -41,6 +42,7 @@ class NotesPanel(Gtk.Window):
 
         self.connect("key-press-event", self._on_key_press)
         self.connect("map-event", self._on_map_event)
+        self.connect("configure-event", self._on_configure)
         self.connect("delete-event", self._on_delete_event)
         self.connect("focus-out-event", self._on_focus_out)
         self.connect("focus-in-event", self._on_focus_in)
@@ -245,8 +247,9 @@ class NotesPanel(Gtk.Window):
         self.add(root)
 
     def _position_panel(self):
+        self.set_size_request(280, 200)
         x, y, w, h = geometry_mod.get_target_geometry()
-        self.set_size_request(w, h)
+        self.resize(w, h)
 
     def _on_map_event(self, widget, event):
         if self._pending_position:
@@ -255,6 +258,26 @@ class NotesPanel(Gtk.Window):
             geometry_mod.apply_geometry(self, x, y, w, h)
             GLib.timeout_add(80, lambda: geometry_mod.apply_geometry(self, x, y, w, h) or False)
         return False
+
+    def _on_configure(self, widget, event):
+        if not settings_mod.load_settings()["remember_geometry"]:
+            return False
+        if self._geo_save_timeout is not None:
+            GLib.source_remove(self._geo_save_timeout)
+        self._geo_save_timeout = GLib.timeout_add(500, self._save_geometry)
+        return False
+
+    def _save_geometry(self):
+        self._geo_save_timeout = None
+        x, y = self.get_position()
+        w, h = self.get_size()
+        settings_mod.save_geometry(x, y, w, h)
+        return False
+
+    def _reset_geometry(self):
+        settings_mod.clear_geometry()
+        x, y, w, h = geometry_mod.get_target_geometry()
+        geometry_mod.apply_geometry(self, x, y, w, h)
 
     def _refresh_notes(self, query: str = ""):
         for row in self.list_box.get_children():
@@ -329,7 +352,7 @@ class NotesPanel(Gtk.Window):
         return False
 
     def _on_open_settings(self, btn):
-        dialog = SettingsDialog(self._apply_settings)
+        dialog = SettingsDialog(self._apply_settings, self._reset_geometry)
         dialog.show_all()
         dialog.present()
 
@@ -578,7 +601,7 @@ class NotesPanel(Gtk.Window):
             if time.monotonic() - self._hidden_at < 0.3:
                 return
             x, y, w, h = geometry_mod.get_target_geometry()
-            self.set_size_request(w, h)
+            self.resize(w, h)
             self.move(x, y)
             self._pending_position = True
             self._refresh_notes(self.search.get_text())

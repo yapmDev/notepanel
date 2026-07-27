@@ -217,9 +217,10 @@ class QuickCaptureDialog(Gtk.Window):
 
 
 class SettingsDialog(Gtk.Window):
-    def __init__(self, on_save):
+    def __init__(self, on_save, on_reset_geometry=None):
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
         self._on_save_cb = on_save
+        self._on_reset_geometry_cb = on_reset_geometry
         self.set_decorated(False)
         self.set_resizable(False)
         self.set_keep_above(True)
@@ -271,6 +272,15 @@ class SettingsDialog(Gtk.Window):
         self.hide_on_focus_out_check.set_active(self._prefs["hide_on_focus_out"])
         root.pack_start(self.hide_on_focus_out_check, False, False, 0)
 
+        self.remember_geometry_check = Gtk.CheckButton(label="Remember position and size")
+        self.remember_geometry_check.set_active(self._prefs["remember_geometry"])
+        root.pack_start(self.remember_geometry_check, False, False, 0)
+
+        btn_reset_geometry = Gtk.Button(label="Reset position and size to default")
+        btn_reset_geometry.set_name("btn-back")
+        btn_reset_geometry.connect("clicked", self._on_reset_geometry)
+        root.pack_start(btn_reset_geometry, False, False, 0)
+
         bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         btn_cancel = Gtk.Button(label="Cancel")
         btn_cancel.set_name("btn-back")
@@ -294,12 +304,18 @@ class SettingsDialog(Gtk.Window):
 
     def _on_save(self, _btn):
         new_settings = {
+            **self._prefs,
             "corner": self.corner_combo.get_active_id() or settings_mod.DEFAULTS["corner"],
             "width_percent": int(self.width_spin.get_value()),
             "height_percent": int(self.height_spin.get_value()),
             "hide_on_focus_out": self.hide_on_focus_out_check.get_active(),
+            "remember_geometry": self.remember_geometry_check.get_active(),
         }
         settings_mod.save_settings(new_settings)
         if self._on_save_cb:
             self._on_save_cb(new_settings)
         self.destroy()
+
+    def _on_reset_geometry(self, _btn):
+        if self._on_reset_geometry_cb:
+            self._on_reset_geometry_cb()

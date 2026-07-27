@@ -7,6 +7,12 @@ import settings as settings_mod
 
 def get_target_geometry() -> tuple[int, int, int, int]:
     prefs = settings_mod.load_settings()
+
+    if prefs["remember_geometry"] and None not in (
+        prefs["last_x"], prefs["last_y"], prefs["last_width"], prefs["last_height"]
+    ):
+        return prefs["last_x"], prefs["last_y"], prefs["last_width"], prefs["last_height"]
+
     corner = prefs["corner"]
     width_ratio = prefs["width_percent"] / 100
     height_ratio = prefs["height_percent"] / 100
@@ -30,6 +36,5 @@ def get_target_geometry() -> tuple[int, int, int, int]:
 
 
 def apply_geometry(window, x: int, y: int, w: int, h: int):
-    window.set_size_request(w, h)
     window.resize(w, h)
     window.move(x, y)
