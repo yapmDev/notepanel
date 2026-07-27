@@ -31,9 +31,5 @@ def get_target_geometry() -> tuple[int, int, int, int]:
 
 def apply_geometry(window, x: int, y: int, w: int, h: int):
     window.set_size_request(w, h)
-    gdk_win = window.get_window()
-    if gdk_win:
-        gdk_win.move_resize(x, y, w, h)
-    else:
-        window.resize(w, h)
-        window.move(x, y)
+    window.resize(w, h)
+    window.move(x, y)

@@ -17,12 +17,13 @@ class NotesPanel(Gtk.Window):
     def __init__(self):
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
         self.set_name("panel-root")
-        self.set_decorated(False)
+        self.set_title("Notes")
+        self.set_decorated(True)
         self.set_resizable(False)
         self.set_skip_taskbar_hint(True)
         self.set_skip_pager_hint(True)
         self.set_keep_above(True)
-        self.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+        self.set_type_hint(Gdk.WindowTypeHint.NORMAL)
 
         self._current_path: Path | None = None
         self._save_timeout: int | None = None
@@ -40,6 +41,7 @@ class NotesPanel(Gtk.Window):
 
         self.connect("key-press-event", self._on_key_press)
         self.connect("map-event", self._on_map_event)
+        self.connect("delete-event", self._on_delete_event)
         self.connect("focus-out-event", self._on_focus_out)
         self.connect("focus-in-event", self._on_focus_in)
 
@@ -65,12 +67,6 @@ class NotesPanel(Gtk.Window):
         self.search.set_halign(Gtk.Align.FILL)
         self.search.connect("search-changed", self._on_search)
         search_box.set_center_widget(self.search)
-
-        self.btn_close_panel = Gtk.Button.new_from_icon_name("window-close-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        self.btn_close_panel.set_name("btn-action")
-        self.btn_close_panel.set_tooltip_text("Close")
-        self.btn_close_panel.connect("clicked", lambda _: self._hide())
-        search_box.pack_end(self.btn_close_panel, False, False, 0)
 
         self.status_label = Gtk.Label(label="", xalign=0)
         self.status_label.set_name("status-label")
@@ -536,6 +532,10 @@ class NotesPanel(Gtk.Window):
                 return True
             self._hide()
 
+    def _on_delete_event(self, widget, event):
+        self._hide()
+        return True
+
     def _on_focus_out(self, widget, event):
         if not settings_mod.load_settings()["hide_on_focus_out"]:
             return False
@@ -583,4 +583,5 @@ class NotesPanel(Gtk.Window):
             self._pending_position = True
             self._refresh_notes(self.search.get_text())
             self.show_all()
+            self.present()
             GLib.idle_add(self._request_focus)
