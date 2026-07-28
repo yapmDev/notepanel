@@ -11,6 +11,7 @@ CORNER_LABELS = {
     "top-left": "Top left",
     "bottom-right": "Bottom right",
     "bottom-left": "Bottom left",
+    "center": "Center",
 }
 
 
@@ -217,9 +218,9 @@ class QuickCaptureDialog(Gtk.Window):
 
 
 class SettingsDialog(Gtk.Window):
-    def __init__(self, on_save, on_reset_geometry=None):
+    def __init__(self, on_change, on_reset_geometry=None):
         super().__init__(type=Gtk.WindowType.TOPLEVEL)
-        self._on_save_cb = on_save
+        self._on_change_cb = on_change
         self._on_reset_geometry_cb = on_reset_geometry
         self.set_decorated(False)
         self.set_resizable(False)
@@ -248,16 +249,19 @@ class SettingsDialog(Gtk.Window):
         for corner_id in settings_mod.CORNERS:
             self.corner_combo.append(corner_id, CORNER_LABELS[corner_id])
         self.corner_combo.set_active_id(self._prefs["corner"])
+        self.corner_combo.connect("changed", self._on_corner_changed)
 
         width_label = Gtk.Label(label="Width (%)", xalign=0)
         width_label.set_name("settings-label")
         self.width_spin = Gtk.SpinButton.new_with_range(1, 100, 1)
         self.width_spin.set_value(self._prefs["width_percent"])
+        self._wire_percent_spin(self.width_spin, "width_percent")
 
         height_label = Gtk.Label(label="Height (%)", xalign=0)
         height_label.set_name("settings-label")
         self.height_spin = Gtk.SpinButton.new_with_range(1, 100, 1)
         self.height_spin.set_value(self._prefs["height_percent"])
+        self._wire_percent_spin(self.height_spin, "height_percent")
 
         grid = Gtk.Grid(row_spacing=8, column_spacing=12)
         grid.attach(corner_label, 0, 0, 1, 1)
@@ -270,29 +274,13 @@ class SettingsDialog(Gtk.Window):
 
         self.hide_on_focus_out_check = Gtk.CheckButton(label="Hide panel when it loses focus")
         self.hide_on_focus_out_check.set_active(self._prefs["hide_on_focus_out"])
+        self.hide_on_focus_out_check.connect("toggled", self._on_hide_on_focus_out_toggled)
         root.pack_start(self.hide_on_focus_out_check, False, False, 0)
-
-        self.remember_geometry_check = Gtk.CheckButton(label="Remember position and size")
-        self.remember_geometry_check.set_active(self._prefs["remember_geometry"])
-        root.pack_start(self.remember_geometry_check, False, False, 0)
 
         btn_reset_geometry = Gtk.Button(label="Reset position and size to default")
         btn_reset_geometry.set_name("btn-back")
         btn_reset_geometry.connect("clicked", self._on_reset_geometry)
         root.pack_start(btn_reset_geometry, False, False, 0)
-
-        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        btn_cancel = Gtk.Button(label="Cancel")
-        btn_cancel.set_name("btn-back")
-        btn_cancel.connect("clicked", lambda _: self.destroy())
-
-        btn_save = Gtk.Button(label="Save")
-        btn_save.set_name("btn-new")
-        btn_save.connect("clicked", self._on_save)
-
-        bar.pack_start(btn_cancel, True, True, 0)
-        bar.pack_start(btn_save, True, True, 0)
-        root.pack_start(bar, False, False, 0)
 
         self.add(root)
 
@@ -302,20 +290,59 @@ class SettingsDialog(Gtk.Window):
             return True
         return False
 
-    def _on_save(self, _btn):
-        new_settings = {
-            **self._prefs,
-            "corner": self.corner_combo.get_active_id() or settings_mod.DEFAULTS["corner"],
-            "width_percent": int(self.width_spin.get_value()),
-            "height_percent": int(self.height_spin.get_value()),
-            "hide_on_focus_out": self.hide_on_focus_out_check.get_active(),
-            "remember_geometry": self.remember_geometry_check.get_active(),
-        }
+    def _apply_setting(self, key, value):
+        new_settings = {**settings_mod.load_settings(), key: value}
         settings_mod.save_settings(new_settings)
-        if self._on_save_cb:
-            self._on_save_cb(new_settings)
-        self.destroy()
+        if self._on_change_cb:
+            self._on_change_cb(new_settings, key)
+
+    def _on_corner_changed(self, combo):
+        self._apply_setting("corner", combo.get_active_id() or settings_mod.DEFAULTS["corner"])
+
+    def _wire_percent_spin(self, spin, key):
+        # Steppers (+/-, scroll, Up/Down keys) are single discrete edits and
+        # apply live. Typing free text is not: intermediate keystrokes (e.g.
+        # "5" while typing "50") shouldn't reposition the panel mid-edit, so
+        # those only commit on Enter or when the field loses focus.
+        state = {"editing": False}
+
+        def commit():
+            if state["editing"]:
+                state["editing"] = False
+                self._apply_setting(key, int(spin.get_value()))
+
+        def on_key_press(widget, event):
+            stepper_keys = (
+                Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Page_Up, Gdk.KEY_Page_Down,
+                Gdk.KEY_Tab, Gdk.KEY_ISO_Left_Tab, Gdk.KEY_Escape,
+            )
+            if event.keyval not in stepper_keys:
+                state["editing"] = True
+            return False
+
+        def on_value_changed(widget):
+            if not state["editing"]:
+                self._apply_setting(key, int(widget.get_value()))
+
+        def on_focus_out(widget, event):
+            commit()
+            return False
+
+        def on_activate(widget):
+            commit()
+
+        spin.connect("key-press-event", on_key_press)
+        spin.connect("value-changed", on_value_changed)
+        spin.connect("focus-out-event", on_focus_out)
+        spin.connect("activate", on_activate)
+
+    def _on_hide_on_focus_out_toggled(self, check):
+        self._apply_setting("hide_on_focus_out", check.get_active())
 
     def _on_reset_geometry(self, _btn):
         if self._on_reset_geometry_cb:
             self._on_reset_geometry_cb()
+        self._prefs = settings_mod.load_settings()
+        self.corner_combo.set_active_id(self._prefs["corner"])
+        self.width_spin.set_value(self._prefs["width_percent"])
+        self.height_spin.set_value(self._prefs["height_percent"])

@@ -258,14 +258,12 @@ class NotesPanel(Gtk.Window):
         return False
 
     def _save_geometry(self):
-        if not settings_mod.load_settings()["remember_geometry"]:
-            return
         x, y = self.get_position()
         w, h = self.get_size()
         settings_mod.save_geometry(x, y, w, h)
 
     def _reset_geometry(self):
-        settings_mod.clear_geometry()
+        settings_mod.reset_geometry()
         x, y, w, h = geometry_mod.get_target_geometry()
         geometry_mod.apply_geometry(self, x, y, w, h)
 
@@ -346,7 +344,9 @@ class NotesPanel(Gtk.Window):
         dialog.show_all()
         dialog.present()
 
-    def _apply_settings(self, new_settings):
+    def _apply_settings(self, new_settings, changed_key=None):
+        if changed_key in ("corner", "width_percent", "height_percent"):
+            settings_mod.clear_remembered_geometry()
         x, y, w, h = geometry_mod.get_target_geometry()
         geometry_mod.apply_geometry(self, x, y, w, h)
 

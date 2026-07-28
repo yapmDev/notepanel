@@ -14,7 +14,7 @@ def get_target_geometry() -> tuple[int, int, int, int]:
     work = monitor.get_workarea()
     has_work = work.height > 0
 
-    if prefs["remember_geometry"] and None not in (
+    if None not in (
         prefs["last_x"], prefs["last_y"], prefs["last_width"], prefs["last_height"]
     ):
         w = prefs["last_width"]
@@ -31,14 +31,18 @@ def get_target_geometry() -> tuple[int, int, int, int]:
     width_ratio = prefs["width_percent"] / 100
     height_ratio = prefs["height_percent"] / 100
 
+    top = work.y if has_work else geo.y
+    bottom_area_end = (work.y + work.height) if has_work else (geo.y + geo.height)
+
     w = int(geo.width * width_ratio)
     h = int((work.height if has_work else geo.height) * height_ratio)
 
-    x = geo.x if "left" in corner else geo.x + geo.width - w
-
-    top = work.y if has_work else geo.y
-    bottom_area_end = (work.y + work.height) if has_work else (geo.y + geo.height)
-    y = top if "top" in corner else bottom_area_end - h
+    if corner == "center":
+        x = geo.x + (geo.width - w) // 2
+        y = top + (bottom_area_end - top - h) // 2
+    else:
+        x = geo.x if "left" in corner else geo.x + geo.width - w
+        y = top if "top" in corner else bottom_area_end - h
 
     return x, y, w, h
 

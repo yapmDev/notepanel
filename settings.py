@@ -4,14 +4,19 @@ from pathlib import Path
 SETTINGS_DIR = Path.home() / ".config" / "notepanel"
 SETTINGS_PATH = SETTINGS_DIR / "settings.json"
 
-CORNERS = ("top-right", "top-left", "bottom-right", "bottom-left")
+CORNERS = ("top-right", "top-left", "bottom-right", "bottom-left", "center")
+
+# App-defined geometry default: fixed, not user-configurable. Used as the
+# initial corner/size and as the target of "reset position and size".
+DEFAULT_CORNER = "center"
+DEFAULT_WIDTH_PERCENT = 25
+DEFAULT_HEIGHT_PERCENT = 50
 
 DEFAULTS = {
-    "corner": "top-right",
-    "width_percent": 20,
-    "height_percent": 100,
+    "corner": DEFAULT_CORNER,
+    "width_percent": DEFAULT_WIDTH_PERCENT,
+    "height_percent": DEFAULT_HEIGHT_PERCENT,
     "hide_on_focus_out": False,
-    "remember_geometry": False,
     "last_x": None,
     "last_y": None,
     "last_width": None,
@@ -34,7 +39,6 @@ def load_settings() -> dict:
     settings["width_percent"] = min(100, max(1, int(settings["width_percent"])))
     settings["height_percent"] = min(100, max(1, int(settings["height_percent"])))
     settings["hide_on_focus_out"] = bool(settings["hide_on_focus_out"])
-    settings["remember_geometry"] = bool(settings["remember_geometry"])
     for key in ("last_x", "last_y", "last_width", "last_height"):
         value = settings[key]
         settings[key] = int(value) if isinstance(value, (int, float)) else None
@@ -56,10 +60,20 @@ def save_geometry(x: int, y: int, w: int, h: int):
     save_settings(settings)
 
 
-def clear_geometry():
+def clear_remembered_geometry() -> dict:
     settings = load_settings()
     settings["last_x"] = None
     settings["last_y"] = None
     settings["last_width"] = None
     settings["last_height"] = None
     save_settings(settings)
+    return settings
+
+
+def reset_geometry() -> dict:
+    settings = load_settings()
+    settings["corner"] = DEFAULT_CORNER
+    settings["width_percent"] = DEFAULT_WIDTH_PERCENT
+    settings["height_percent"] = DEFAULT_HEIGHT_PERCENT
+    save_settings(settings)
+    return clear_remembered_geometry()
