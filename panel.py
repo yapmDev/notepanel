@@ -66,8 +66,13 @@ class NotesPanel(Gtk.Window):
         self.search.connect("search-changed", self._on_search)
         search_box.set_center_widget(self.search)
 
-        self.status_label = Gtk.Label(label="", xalign=0)
+        # Sits in the search row, to the right of the (centered) entry. Shown
+        # only when the list has results — no_show_all so the panel's show_all()
+        # can't override the hidden state set by _refresh_notes/_refresh_trash.
+        self.status_label = Gtk.Label(label="", xalign=1)
         self.status_label.set_name("status-label")
+        self.status_label.set_no_show_all(True)
+        search_box.pack_end(self.status_label, False, False, 0)
 
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -235,7 +240,6 @@ class NotesPanel(Gtk.Window):
         bottom_bar.pack_end(self.btn_settings, False, False, 0)
 
         root.pack_start(search_box, False, False, 0)
-        root.pack_start(self.status_label, False, False, 0)
         root.pack_start(scroll, True, True, 0)
         root.pack_start(editor_box, True, True, 0)
         root.pack_start(bottom_bar, False, False, 0)
@@ -274,8 +278,7 @@ class NotesPanel(Gtk.Window):
         for note in self._notes:
             self.list_box.add(NoteRow(note, self._delete_note_by_path))
 
-        count = len(self._notes)
-        self.status_label.set_text(f"{count} note{'s' if count != 1 else ''}")
+        self._set_status_count(len(self._notes))
 
     def _restore_last_note(self):
         last_path = notes_mod.get_last_note_path()
@@ -293,8 +296,15 @@ class NotesPanel(Gtk.Window):
         for note in trash_notes:
             self.list_box.add(TrashRow(note, self._restore_note, self._delete_permanently))
 
-        count = len(trash_notes)
-        self.status_label.set_text(f"Trash · {count} note{'s' if count != 1 else ''}")
+        self._set_status_count(len(trash_notes), prefix="Trash · ")
+
+    def _set_status_count(self, count: int, prefix: str = ""):
+        if count:
+            self.status_label.set_text(f"{prefix}{count} note{'s' if count != 1 else ''}")
+            self.status_label.show()
+        else:
+            self.status_label.set_text("")
+            self.status_label.hide()
 
     def _clear_editor(self):
         self._close_find_bar()
