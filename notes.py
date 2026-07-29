@@ -35,6 +35,12 @@ def _note_from_path(path: Path) -> dict:
     }
 
 
+def load_note(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    return _note_from_path(path)
+
+
 def list_notes() -> list[dict]:
     ensure_dir()
     return [
@@ -117,18 +123,42 @@ def new_note_content(title: str = "New note") -> str:
     return f"# {title}\n\n"
 
 
-def get_last_note_path() -> Path | None:
+def get_last_note_path(max_age_seconds: float | None = None) -> Path | None:
+    """Path of the note last open in the editor, or None.
+
+    The pointer file holds `{unix_timestamp}\\n{path}` — the timestamp is
+    refreshed on every interaction with the note, so its age measures how
+    long the note has been untouched. A pointer older than
+    `max_age_seconds`, or one lacking a timestamp (written by an older
+    version), counts as absent.
+    """
     try:
         raw = _LAST_NOTE_PATH.read_text(encoding="utf-8").strip()
     except OSError:
         return None
-    path = Path(raw) if raw else None
-    return path if path and path.exists() else None
+    if not raw:
+        return None
+
+    stamp, _, raw_path = raw.partition("\n")
+    if not raw_path:
+        return None
+    if max_age_seconds is not None:
+        try:
+            age = datetime.now().timestamp() - float(stamp)
+        except ValueError:
+            return None
+        if age > max_age_seconds:
+            return None
+
+    path = Path(raw_path.strip())
+    return path if path.exists() else None
 
 
 def set_last_note_path(path: Path | None):
+    """Point at `path` (stamped now), or drop the pointer when None."""
     ensure_dir()
     if path is None:
         _LAST_NOTE_PATH.unlink(missing_ok=True)
     else:
-        _LAST_NOTE_PATH.write_text(str(path), encoding="utf-8")
+        stamp = int(datetime.now().timestamp())
+        _LAST_NOTE_PATH.write_text(f"{stamp}\n{path}", encoding="utf-8")

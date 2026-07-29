@@ -57,8 +57,13 @@ class NotesPanel(Gtk.Window):
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.set_name("panel-root")
 
+        # The search row and the bottom bar belong to the list view only, and
+        # are hidden while the editor is up — no_show_all so the panel's
+        # show_all() on every toggle can't override the current view's state.
         search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         search_box.set_name("toolbar")
+        search_box.set_no_show_all(True)
+        self.search_box = search_box
         self.search = Gtk.SearchEntry()
         self.search.set_name("search-entry")
         self.search.set_placeholder_text("Search notes...")
@@ -87,21 +92,18 @@ class NotesPanel(Gtk.Window):
         editor_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         editor_box.set_name("editor-box")
         editor_box.set_vexpand(True)
-        editor_box.set_no_show_all(True)
-        self.editor_box = editor_box
 
-        editor_actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
-        editor_actions.set_name("editor-actions")
+        # The editor's own actions live in the shared bottom bar (built below),
+        # next to the same "← Back" button the trash uses.
+        self.btn_copy = Gtk.Button.new_from_icon_name("edit-copy-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        self.btn_copy.set_name("btn-action")
+        self.btn_copy.set_tooltip_text("Copy")
+        self.btn_copy.connect("clicked", self._on_copy)
 
-        btn_copy = Gtk.Button.new_from_icon_name("edit-copy-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        btn_copy.set_name("btn-action")
-        btn_copy.set_tooltip_text("Copy")
-        btn_copy.connect("clicked", self._on_copy)
-
-        btn_select_all = Gtk.Button.new_from_icon_name("edit-select-all-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        btn_select_all.set_name("btn-action")
-        btn_select_all.set_tooltip_text("Select all")
-        btn_select_all.connect("clicked", self._on_select_all)
+        self.btn_select_all = Gtk.Button.new_from_icon_name("edit-select-all-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        self.btn_select_all.set_name("btn-action")
+        self.btn_select_all.set_tooltip_text("Select all")
+        self.btn_select_all.connect("clicked", self._on_select_all)
 
         self.btn_find = Gtk.Button.new_from_icon_name("edit-find-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
         self.btn_find.set_name("btn-action")
@@ -113,11 +115,6 @@ class NotesPanel(Gtk.Window):
         self.btn_preview.set_name("btn-action")
         self.btn_preview.set_tooltip_text("Preview")
         self.btn_preview.connect("clicked", self._on_toggle_preview)
-
-        editor_actions.pack_start(btn_copy, False, False, 0)
-        editor_actions.pack_start(btn_select_all, False, False, 0)
-        editor_actions.pack_start(self.btn_find, False, False, 0)
-        editor_actions.pack_end(self.btn_preview, False, False, 0)
 
         find_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         find_bar.set_name("find-bar")
@@ -155,7 +152,9 @@ class NotesPanel(Gtk.Window):
         find_bar.pack_start(btn_find_close, False, False, 0)
 
         self.find_revealer = Gtk.Revealer()
-        self.find_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
+        # Slides up from the bottom of the editor, right above the bar holding
+        # the button that opened it.
+        self.find_revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_UP)
         self.find_revealer.set_reveal_child(False)
         self.find_revealer.add(find_bar)
 
@@ -192,19 +191,32 @@ class NotesPanel(Gtk.Window):
         self.editor_stack.add_named(self.web_view, "preview")
         self.editor_stack.set_visible_child_name("editor")
 
-        editor_box.pack_start(editor_actions, False, False, 0)
-        editor_box.pack_start(self.find_revealer, False, False, 0)
         editor_box.pack_start(self.editor_stack, True, True, 0)
+        editor_box.pack_start(self.find_revealer, False, False, 0)
 
-        # editor_box itself is no_show_all (toggled via show()/hide()), which
-        # blocks show_all() from ever reaching its children — show them once
-        # here so they're ready whenever editor_box becomes visible.
-        for child in editor_box.get_children():
-            child.show_all()
+        # The list and the editor are separate destinations, not panes sharing
+        # the panel's height: only one is on screen at a time.
+        self.main_stack = Gtk.Stack()
+        self.main_stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
+        self.main_stack.set_transition_duration(120)
+        self.main_stack.set_vexpand(True)
+        self.main_stack.add_named(scroll, "list")
+        self.main_stack.add_named(editor_box, "editor")
+        # A stack can only switch to a child that is visible itself, and the
+        # window's show_all() doesn't run until the first toggle() — show both
+        # pages now so switching works before that (e.g. reopening the last
+        # note during __init__). The stack still shows only one at a time.
+        scroll.show_all()
+        editor_box.show_all()
+        self.main_stack.set_visible_child_name("list")
 
-        # bottom bar — shared container, widgets toggled per mode
+        # bottom bar — the single navigation surface: the same "← Back" button
+        # for every nested destination (trash, editor), plus that destination's
+        # own actions. Membership per mode is decided by _update_bottom_bar().
         bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         bottom_bar.set_name("bottom-bar")
+        bottom_bar.set_no_show_all(True)
+        self.bottom_bar = bottom_bar
 
         self.btn_new = Gtk.Button(label="+ New note")
         self.btn_new.set_name("btn-new")
@@ -225,24 +237,44 @@ class NotesPanel(Gtk.Window):
 
         self.btn_back = Gtk.Button(label="← Back")
         self.btn_back.set_name("btn-back")
-        self.btn_back.connect("clicked", self._on_close_trash)
-        self.btn_back.set_no_show_all(True)
+        self.btn_back.connect("clicked", self._on_back)
 
         self.btn_empty_trash = Gtk.Button(label="Empty trash")
         self.btn_empty_trash.set_name("btn-empty-trash")
         self.btn_empty_trash.connect("clicked", self._on_empty_trash)
-        self.btn_empty_trash.set_no_show_all(True)
+
+        # Separates the one control that never changes (settings) from the
+        # actions of whichever view is up.
+        bar_separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        bar_separator.set_name("bar-separator")
 
         bottom_bar.pack_start(self.btn_back, False, False, 0)
         bottom_bar.pack_start(self.btn_new, True, True, 0)
+        # pack_end fills right-to-left, so this lists the end group from its
+        # rightmost slot inward: settings keeps the far-right slot in every
+        # view, then the separator, then the current view's own actions (only
+        # one view's buttons are visible at a time).
+        bottom_bar.pack_end(self.btn_settings, False, False, 0)
+        bottom_bar.pack_end(bar_separator, False, False, 0)
+        bottom_bar.pack_end(self.btn_preview, False, False, 0)
+        bottom_bar.pack_end(self.btn_find, False, False, 0)
+        bottom_bar.pack_end(self.btn_select_all, False, False, 0)
+        bottom_bar.pack_end(self.btn_copy, False, False, 0)
         bottom_bar.pack_end(self.btn_empty_trash, False, False, 0)
         bottom_bar.pack_end(self.btn_open_trash, False, False, 0)
-        bottom_bar.pack_end(self.btn_settings, False, False, 0)
 
         root.pack_start(search_box, False, False, 0)
-        root.pack_start(scroll, True, True, 0)
-        root.pack_start(editor_box, True, True, 0)
+        root.pack_start(self.main_stack, True, True, 0)
         root.pack_start(bottom_bar, False, False, 0)
+
+        # search_box/bottom_bar are no_show_all (toggled via show()/hide()),
+        # which blocks show_all() from ever reaching their children — show them
+        # once here so they're ready whenever their bar becomes visible. That
+        # same blocking is what lets _update_bottom_bar() own per-mode
+        # visibility from now on: no later show_all() can undo its hides.
+        for bar in (search_box, bottom_bar):
+            for child in bar.get_children():
+                child.show_all()
 
         self.add(root)
 
@@ -281,12 +313,76 @@ class NotesPanel(Gtk.Window):
         self._set_status_count(len(self._notes))
 
     def _restore_last_note(self):
-        last_path = notes_mod.get_last_note_path()
-        if not last_path:
-            return
-        note = next((n for n in self._notes if n["path"] == last_path), None)
+        """Open the last note if it's still recent, otherwise show the list.
+
+        The note only counts as "still open" for `remember_note_minutes` after
+        the last interaction with it (0 disables the shortcut) — past that the
+        panel opens on the list, as it does for a first-time show.
+        """
+        minutes = settings_mod.load_settings()["remember_note_minutes"]
+        note = None
+        if minutes:
+            last_path = notes_mod.get_last_note_path(minutes * 60)
+            if last_path:
+                note = notes_mod.load_note(last_path)
         if note:
             self._load_note_in_editor(note)
+        else:
+            self._clear_editor()
+            self._show_list_view()
+
+    # --- view switching (list ⇄ editor) ---
+
+    def _in_editor_view(self) -> bool:
+        return self.main_stack.get_visible_child_name() == "editor"
+
+    def _show_list_view(self):
+        self.main_stack.set_visible_child_name("list")
+        self.search_box.show()
+        self._update_bottom_bar()
+        self.bottom_bar.show()
+        self.search.grab_focus()
+
+    def _show_editor_view(self):
+        self.main_stack.set_visible_child_name("editor")
+        self.search_box.hide()
+        self._update_bottom_bar()
+        self.bottom_bar.show()
+        self.text_view.grab_focus()
+
+    def _update_bottom_bar(self):
+        """Fill the bottom bar with the current destination's controls.
+
+        Settings and the separator to its left are deliberately absent here:
+        they hold the far-right slot in every view.
+        """
+        editing = self._in_editor_view()
+        list_mode = not editing and not self._trash_mode
+        self.btn_back.set_visible(not list_mode)
+        self.btn_new.set_visible(list_mode)
+        self.btn_open_trash.set_visible(list_mode)
+        self.btn_empty_trash.set_visible(self._trash_mode and not editing)
+        for btn in (self.btn_copy, self.btn_select_all, self.btn_find, self.btn_preview):
+            btn.set_visible(editing)
+
+    def _on_back(self, btn):
+        # One back button for every nested destination — the editor first (the
+        # trash list is what's behind a trashed note), then the trash itself.
+        if self._in_editor_view():
+            self._on_editor_back()
+        else:
+            self._on_close_trash(btn)
+
+    def _on_editor_back(self, *_args):
+        if self._preview_mode:
+            self._on_toggle_preview(None)
+        self._flush_save()
+        self._clear_editor()
+        if self._trash_mode:
+            self._refresh_trash()
+        else:
+            self._refresh_notes(self.search.get_text())
+        self._show_list_view()
 
     def _refresh_trash(self):
         for row in self.list_box.get_children():
@@ -308,19 +404,21 @@ class NotesPanel(Gtk.Window):
 
     def _clear_editor(self):
         self._close_find_bar()
+        # A pending save would otherwise fire against the emptied buffer and
+        # write it back over the note (or create a blank one).
+        self._cancel_pending_save()
         buf = self.text_view.get_buffer()
         buf.handler_block_by_func(self._on_content_changed)
         buf.set_text("")
         buf.handler_unblock_by_func(self._on_content_changed)
         self._current_path = None
         notes_mod.set_last_note_path(None)
-        self.editor_box.hide()
 
     def _load_note_in_editor(self, note: dict):
         self._close_find_bar()
-        self.editor_box.show()
         self._current_path = note["path"]
-        notes_mod.set_last_note_path(self._current_path)
+        if not self._trash_mode:
+            notes_mod.set_last_note_path(self._current_path)
         buf = self.text_view.get_buffer()
         buf.handler_block_by_func(self._on_content_changed)
         buf.set_text(note["content"])
@@ -330,11 +428,22 @@ class NotesPanel(Gtk.Window):
             self.web_view.load_html(
                 preview_mod.build_preview_html(content, self.get_style_context()), "file:///"
             )
+        self._show_editor_view()
 
     def _schedule_save(self):
+        self._cancel_pending_save()
+        self._save_timeout = GLib.timeout_add(800, self._do_save)
+
+    def _cancel_pending_save(self):
         if self._save_timeout is not None:
             GLib.source_remove(self._save_timeout)
-        self._save_timeout = GLib.timeout_add(800, self._do_save)
+            self._save_timeout = None
+
+    def _flush_save(self):
+        """Run a debounced save now — before leaving the note behind."""
+        if self._save_timeout is not None:
+            self._cancel_pending_save()
+            self._do_save()
 
     def _do_save(self):
         self._save_timeout = None
@@ -368,14 +477,15 @@ class NotesPanel(Gtk.Window):
 
     def _on_new_note(self, btn):
         self._close_find_bar()
-        self.editor_box.show()
+        self._cancel_pending_save()
         self._current_path = None
         notes_mod.set_last_note_path(None)
         buf = self.text_view.get_buffer()
         buf.handler_block_by_func(self._on_content_changed)
         buf.set_text("# New note\n\n")
         buf.handler_unblock_by_func(self._on_content_changed)
-        self.text_view.grab_focus()
+        buf.place_cursor(buf.get_end_iter())
+        self._show_editor_view()
 
     # --- trash ---
 
@@ -385,23 +495,17 @@ class NotesPanel(Gtk.Window):
         self._trash_mode = True
         self.text_view.set_editable(False)
         self._clear_editor()
-        self.btn_new.hide()
-        self.btn_open_trash.hide()
-        self.btn_back.show()
-        self.btn_empty_trash.show()
         self.search.set_sensitive(False)
         self._refresh_trash()
+        self._show_list_view()
 
     def _on_close_trash(self, btn):
         self._trash_mode = False
         self.text_view.set_editable(True)
         self._clear_editor()
-        self.btn_back.hide()
-        self.btn_empty_trash.hide()
-        self.btn_new.show()
-        self.btn_open_trash.show()
         self.search.set_sensitive(True)
         self._refresh_notes(self.search.get_text())
+        self._show_list_view()
 
     def _restore_note(self, path: Path):
         notes_mod.restore_note(path)
@@ -551,6 +655,12 @@ class NotesPanel(Gtk.Window):
             if self.find_revealer.get_reveal_child():
                 self._close_find_bar()
                 return True
+            # Escape is the back button: it unwinds one nested destination at
+            # a time — find bar → note → trash → notes list — and only hides
+            # the panel once there's nothing left to back out of.
+            if self._in_editor_view() or self._trash_mode:
+                self._on_back(None)
+                return True
             self._hide()
 
     def _on_delete_event(self, widget, event):
@@ -578,10 +688,18 @@ class NotesPanel(Gtk.Window):
         return False
 
     def _hide(self):
+        # Dismissing the panel is a transition point: commit the debounced save
+        # now, or the next show would reload the note from a stale file.
+        self._flush_save()
         self._save_geometry()
         self._hidden_at = time.monotonic()
         if self._trash_mode:
             self._on_close_trash(None)
+        elif self._in_editor_view() and self._current_path:
+            # Re-stamp the pointer: the note stays "current" for the configured
+            # window counted from here — dismissing the panel is the last
+            # interaction with it, not the last keystroke.
+            notes_mod.set_last_note_path(self._current_path)
         self.hide()
 
     def _request_focus(self):
@@ -592,7 +710,10 @@ class NotesPanel(Gtk.Window):
             except Exception:
                 ts = Gdk.CURRENT_TIME
             gdk_win.focus(ts)
-        self.search.grab_focus()
+        if self._in_editor_view():
+            self.text_view.grab_focus()
+        else:
+            self.search.grab_focus()
 
     def toggle(self):
         if self.get_visible():
@@ -614,6 +735,7 @@ class NotesPanel(Gtk.Window):
             self.move(x, y)
             self._pending_position = True
             self._refresh_notes(self.search.get_text())
+            self._restore_last_note()
             self.show_all()
             self.present()
             GLib.idle_add(self._request_focus)

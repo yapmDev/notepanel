@@ -86,12 +86,6 @@
 
 #editor-box {
     background-color: @theme_base_color;
-    border-top: 1px solid @borders;
-}
-
-#editor-actions {
-    padding: 4px 8px;
-    border-bottom: 1px solid @borders;
 }
 
 #btn-action {
@@ -111,7 +105,7 @@
 
 #find-bar {
     padding: 6px 8px;
-    border-bottom: 1px solid @borders;
+    border-top: 1px solid @borders;
     background-color: @theme_bg_color;
 }
 
@@ -190,6 +184,12 @@
     background-color: @theme_bg_color;
     padding: 8px 12px 12px 12px;
     border-top: 1px solid @borders;
+}
+
+#bar-separator {
+    background-color: @borders;
+    min-width: 1px;
+    margin: 3px 2px;
 }
 
 #btn-back {
@@ -294,4 +294,9 @@
 #settings-label {
     color: mix(@theme_fg_color, @theme_bg_color, 0.4);
     font-size: 12px;
+}
+
+#settings-hint {
+    color: mix(@theme_fg_color, @theme_bg_color, 0.55);
+    font-size: 11px;
 }

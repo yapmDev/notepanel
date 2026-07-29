@@ -255,13 +255,28 @@ class SettingsDialog(Gtk.Window):
         width_label.set_name("settings-label")
         self.width_spin = Gtk.SpinButton.new_with_range(1, 100, 1)
         self.width_spin.set_value(self._prefs["width_percent"])
-        self._wire_percent_spin(self.width_spin, "width_percent")
+        self._wire_spin(self.width_spin, "width_percent")
 
         height_label = Gtk.Label(label="Height (%)", xalign=0)
         height_label.set_name("settings-label")
         self.height_spin = Gtk.SpinButton.new_with_range(1, 100, 1)
         self.height_spin.set_value(self._prefs["height_percent"])
-        self._wire_percent_spin(self.height_spin, "height_percent")
+        self._wire_spin(self.height_spin, "height_percent")
+
+        remember_label = Gtk.Label(label="Reopen last note (min)", xalign=0)
+        remember_label.set_name("settings-label")
+        self.remember_spin = Gtk.SpinButton.new_with_range(
+            0, settings_mod.MAX_REMEMBER_NOTE_MINUTES, 1
+        )
+        self.remember_spin.set_value(self._prefs["remember_note_minutes"])
+        self._wire_spin(self.remember_spin, "remember_note_minutes")
+
+        remember_hint = Gtk.Label(
+            label="Reopening the panel jumps back into the last note if it was\n"
+                  "used within this window. 0 always opens the notes list.",
+            xalign=0,
+        )
+        remember_hint.set_name("settings-hint")
 
         grid = Gtk.Grid(row_spacing=8, column_spacing=12)
         grid.attach(corner_label, 0, 0, 1, 1)
@@ -270,6 +285,9 @@ class SettingsDialog(Gtk.Window):
         grid.attach(self.width_spin, 1, 1, 1, 1)
         grid.attach(height_label, 0, 2, 1, 1)
         grid.attach(self.height_spin, 1, 2, 1, 1)
+        grid.attach(remember_label, 0, 3, 1, 1)
+        grid.attach(self.remember_spin, 1, 3, 1, 1)
+        grid.attach(remember_hint, 0, 4, 2, 1)
         root.pack_start(grid, False, False, 0)
 
         self.hide_on_focus_out_check = Gtk.CheckButton(label="Hide panel when it loses focus")
@@ -299,11 +317,11 @@ class SettingsDialog(Gtk.Window):
     def _on_corner_changed(self, combo):
         self._apply_setting("corner", combo.get_active_id() or settings_mod.DEFAULTS["corner"])
 
-    def _wire_percent_spin(self, spin, key):
+    def _wire_spin(self, spin, key):
         # Steppers (+/-, scroll, Up/Down keys) are single discrete edits and
         # apply live. Typing free text is not: intermediate keystrokes (e.g.
-        # "5" while typing "50") shouldn't reposition the panel mid-edit, so
-        # those only commit on Enter or when the field loses focus.
+        # "5" while typing "50") shouldn't take effect mid-edit, so those only
+        # commit on Enter or when the field loses focus.
         state = {"editing": False}
 
         def commit():

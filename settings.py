@@ -12,11 +12,18 @@ DEFAULT_CORNER = "center"
 DEFAULT_WIDTH_PERCENT = 25
 DEFAULT_HEIGHT_PERCENT = 50
 
+# Minutes the last open note stays "current": reopening the panel within this
+# window jumps straight back into the editor, after it the notes list is shown.
+# 0 disables the shortcut entirely.
+DEFAULT_REMEMBER_NOTE_MINUTES = 3
+MAX_REMEMBER_NOTE_MINUTES = 1440
+
 DEFAULTS = {
     "corner": DEFAULT_CORNER,
     "width_percent": DEFAULT_WIDTH_PERCENT,
     "height_percent": DEFAULT_HEIGHT_PERCENT,
     "hide_on_focus_out": False,
+    "remember_note_minutes": DEFAULT_REMEMBER_NOTE_MINUTES,
     "last_x": None,
     "last_y": None,
     "last_width": None,
@@ -39,6 +46,11 @@ def load_settings() -> dict:
     settings["width_percent"] = min(100, max(1, int(settings["width_percent"])))
     settings["height_percent"] = min(100, max(1, int(settings["height_percent"])))
     settings["hide_on_focus_out"] = bool(settings["hide_on_focus_out"])
+    try:
+        minutes = int(settings["remember_note_minutes"])
+    except (TypeError, ValueError):
+        minutes = DEFAULTS["remember_note_minutes"]
+    settings["remember_note_minutes"] = min(MAX_REMEMBER_NOTE_MINUTES, max(0, minutes))
     for key in ("last_x", "last_y", "last_width", "last_height"):
         value = settings[key]
         settings[key] = int(value) if isinstance(value, (int, float)) else None
