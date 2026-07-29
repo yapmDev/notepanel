@@ -20,9 +20,6 @@ class NotesPanel(Gtk.Window):
         self.set_title("Notes")
         self.set_decorated(True)
         self.set_resizable(True)
-        self.set_skip_taskbar_hint(True)
-        self.set_skip_pager_hint(True)
-        self.set_keep_above(True)
         self.set_type_hint(Gdk.WindowTypeHint.NORMAL)
 
         self._current_path: Path | None = None
@@ -30,6 +27,7 @@ class NotesPanel(Gtk.Window):
         self._notes: list[dict] = []
         self._pending_position = False
         self._hidden_at: float = 0.0
+        self._focus_lost_at: float = 0.0
         self._hide_timeout: int | None = None
         self._trash_mode = False
 
@@ -550,6 +548,7 @@ class NotesPanel(Gtk.Window):
         return True
 
     def _on_focus_out(self, widget, event):
+        self._focus_lost_at = time.monotonic()
         if not settings_mod.load_settings()["hide_on_focus_out"]:
             return False
         if self._hide_timeout:
@@ -587,6 +586,15 @@ class NotesPanel(Gtk.Window):
 
     def toggle(self):
         if self.get_visible():
+            # Without keep-above the panel stays visible but buried behind
+            # whatever window took the focus, which reads as "hidden" — in that
+            # case the toggle must raise it, not hide it. The focus-out caused
+            # by the tray click itself lands a few ms before this call, so a
+            # very recent focus loss still counts as "was on top".
+            if not self.has_toplevel_focus() and time.monotonic() - self._focus_lost_at > 0.3:
+                self.present()
+                GLib.idle_add(self._request_focus)
+                return
             self._hide()
         else:
             if time.monotonic() - self._hidden_at < 0.3:
