@@ -12,6 +12,24 @@ import geometry as geometry_mod
 import settings as settings_mod
 from widgets import NoteRow, TrashRow, SettingsDialog
 
+# Ids for the two tag-filter entries that aren't tags themselves. Uppercase is
+# what keeps them from colliding with a real tag: notes.normalize_tag()
+# lowercases every tag, so neither can ever be one. (A NUL-prefixed sentinel
+# would look safer and isn't — GTK truncates ids at the first NUL, collapsing
+# both of these to the same empty string.)
+_TAG_ALL = "ALL"
+_TAG_NONE = "NONE"
+
+# What the editor's tag combo shows for a note with no tag. Only ever text on
+# screen: it maps back to "" on save, so an untagged note stays in the one
+# untagged group (_TAG_NONE) instead of spawning a real tag that reads the same.
+_UNTAGGED_TEXT = "untagged"
+
+
+def _default_note_title() -> str:
+    """The title a new note carries until it's edited."""
+    return time.strftime("New Note Title %Y-%m-%d %H:%M:%S")
+
 
 class NotesPanel(Gtk.Window):
     def __init__(self):
@@ -23,6 +41,9 @@ class NotesPanel(Gtk.Window):
         self.set_type_hint(Gdk.WindowTypeHint.NORMAL)
 
         self._current_path: Path | None = None
+        # The untouched default title of a new note, if that's what the entry
+        # still holds — an empty note under it is not worth a file yet.
+        self._default_title: str | None = None
         self._save_timeout: int | None = None
         self._notes: list[dict] = []
         self._pending_position = False
@@ -30,6 +51,12 @@ class NotesPanel(Gtk.Window):
         self._focus_lost_at: float = 0.0
         self._hide_timeout: int | None = None
         self._trash_mode = False
+        # None = every tag, "" = only untagged, otherwise that one tag.
+        self._tag_filter: str | None = None
+        self._tag_filter_items: list[tuple[str, int]] = []
+        self._tag_choices: list[str] = []
+        self._suppress_tag_filter = False
+        self._suppress_meta_save = False
 
         self._load_css()
         self._build_ui()
@@ -70,6 +97,15 @@ class NotesPanel(Gtk.Window):
         self.search.set_halign(Gtk.Align.FILL)
         self.search.connect("search-changed", self._on_search)
         search_box.set_center_widget(self.search)
+
+        # Sits in the search row, left of the (centered) entry. Rebuilt from
+        # the tags actually in use — see _sync_tag_filter().
+        self.tag_filter = Gtk.ComboBoxText()
+        self.tag_filter.set_name("tag-filter")
+        self.tag_filter.set_tooltip_text("Filter by tag")
+        self.tag_filter.set_valign(Gtk.Align.CENTER)
+        self.tag_filter.connect("changed", self._on_tag_filter_changed)
+        search_box.pack_start(self.tag_filter, False, False, 0)
 
         # Sits in the search row, to the right of the (centered) entry. Shown
         # only when the list has results — no_show_all so the panel's show_all()
@@ -191,6 +227,37 @@ class NotesPanel(Gtk.Window):
         self.editor_stack.add_named(self.web_view, "preview")
         self.editor_stack.set_visible_child_name("editor")
 
+        # The note's title and tag live here, not in the buffer: the file
+        # still stores them on its first line ("Title :: tag"), but the editor
+        # shows only the body, so this row is the only place to edit them.
+        # no_show_all so the panel's show_all() can't reveal it over the
+        # preview, which renders the title as its own H1 instead.
+        meta_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        meta_row.set_name("meta-row")
+        meta_row.set_no_show_all(True)
+        self.meta_row = meta_row
+
+        self.title_entry = Gtk.Entry()
+        self.title_entry.set_name("meta-title")
+        self.title_entry.set_placeholder_text("Title")
+        self.title_entry.set_hexpand(True)
+        self.title_entry.connect("activate", self._on_title_activate)
+        self.title_entry.connect("focus-out-event", self._on_meta_focus_out)
+
+        self.tag_combo = Gtk.ComboBoxText.new_with_entry()
+        self.tag_combo.set_name("meta-tag")
+        self.tag_combo.connect("changed", self._on_tag_combo_changed)
+        tag_entry = self.tag_combo.get_child()
+        tag_entry.set_name("meta-tag-entry")
+        tag_entry.set_placeholder_text("tag")
+        tag_entry.set_width_chars(10)
+        tag_entry.connect("activate", self._on_tag_activate)
+        tag_entry.connect("focus-out-event", self._on_meta_focus_out)
+
+        meta_row.pack_start(self.title_entry, True, True, 0)
+        meta_row.pack_start(self.tag_combo, False, False, 0)
+
+        editor_box.pack_start(meta_row, False, False, 0)
         editor_box.pack_start(self.editor_stack, True, True, 0)
         editor_box.pack_start(self.find_revealer, False, False, 0)
 
@@ -272,7 +339,7 @@ class NotesPanel(Gtk.Window):
         # once here so they're ready whenever their bar becomes visible. That
         # same blocking is what lets _update_bottom_bar() own per-mode
         # visibility from now on: no later show_all() can undo its hides.
-        for bar in (search_box, bottom_bar):
+        for bar in (search_box, bottom_bar, meta_row):
             for child in bar.get_children():
                 child.show_all()
 
@@ -302,15 +369,83 @@ class NotesPanel(Gtk.Window):
         geometry_mod.apply_geometry(self, x, y, w, h)
 
     def _refresh_notes(self, query: str = ""):
+        # Before the query runs: the dropdown may drop the tag being filtered
+        # on (the last note carrying it just lost it), which resets the filter.
+        self._sync_tag_filter()
+
         for row in self.list_box.get_children():
             self.list_box.remove(row)
 
-        self._notes = notes_mod.search_notes(query) if query else notes_mod.list_notes()
+        if query:
+            self._notes = notes_mod.search_notes(query, self._tag_filter)
+        else:
+            self._notes = notes_mod.list_notes(self._tag_filter)
 
         for note in self._notes:
             self.list_box.add(NoteRow(note, self._delete_note_by_path))
 
         self._set_status_count(len(self._notes))
+
+    # --- tags ---
+
+    def _sync_tag_filter(self):
+        """Rebuild the tag dropdown, but only when the tags in use changed.
+
+        _refresh_notes() runs on every save, and rebuilding the model each
+        time would close the popup mid-click and churn the selection.
+        """
+        items = notes_mod.list_tags()
+        if items == self._tag_filter_items:
+            return
+        self._tag_filter_items = items
+
+        self._suppress_tag_filter = True
+        self.tag_filter.remove_all()
+        self.tag_filter.append(_TAG_ALL, "All")
+        for tag, count in items:
+            if tag:
+                self.tag_filter.append(tag, f"{tag} ({count})")
+            else:
+                self.tag_filter.append(_TAG_NONE, f"Untagged ({count})")
+        if not self.tag_filter.set_active_id(self._filter_id()):
+            # The filtered tag is gone from every note — fall back to All.
+            self._tag_filter = None
+            self.tag_filter.set_active_id(_TAG_ALL)
+        self._suppress_tag_filter = False
+
+    def _filter_id(self) -> str:
+        if self._tag_filter is None:
+            return _TAG_ALL
+        return _TAG_NONE if self._tag_filter == "" else self._tag_filter
+
+    def _on_tag_filter_changed(self, combo):
+        if self._suppress_tag_filter:
+            return
+        active_id = combo.get_active_id()
+        if active_id == _TAG_ALL:
+            self._tag_filter = None
+        elif active_id == _TAG_NONE:
+            self._tag_filter = ""
+        else:
+            self._tag_filter = active_id
+        self._refresh_notes(self.search.get_text())
+
+    def _sync_tag_choices(self):
+        """Offer the tags already in use as options in the editor's combo."""
+        tags = [tag for tag, _ in notes_mod.list_tags() if tag]
+        if tags == self._tag_choices:
+            return
+        self._tag_choices = tags
+        self._suppress_meta_save = True
+        # remove_all() clears the combo's entry too — put its text back.
+        tag_entry = self.tag_combo.get_child()
+        current = tag_entry.get_text()
+        self.tag_combo.remove_all()
+        self.tag_combo.append_text(_UNTAGGED_TEXT)
+        for tag in tags:
+            self.tag_combo.append_text(tag)
+        tag_entry.set_text(current)
+        self._suppress_meta_save = False
 
     def _restore_last_note(self):
         """Open the last note if it's still recent, otherwise show the list.
@@ -346,6 +481,9 @@ class NotesPanel(Gtk.Window):
     def _show_editor_view(self):
         self.main_stack.set_visible_child_name("editor")
         self.search_box.hide()
+        # The preview renders the title as an H1 of its own, so the meta row
+        # would only repeat it there.
+        self.meta_row.set_visible(not self._preview_mode)
         self._update_bottom_bar()
         self.bottom_bar.show()
         self.text_view.grab_focus()
@@ -411,24 +549,49 @@ class NotesPanel(Gtk.Window):
         buf.handler_block_by_func(self._on_content_changed)
         buf.set_text("")
         buf.handler_unblock_by_func(self._on_content_changed)
+        self._set_meta("", "")
         self._current_path = None
+        self._default_title = None
         notes_mod.set_last_note_path(None)
 
     def _load_note_in_editor(self, note: dict):
         self._close_find_bar()
         self._current_path = note["path"]
+        self._default_title = None
         if not self._trash_mode:
             notes_mod.set_last_note_path(self._current_path)
         buf = self.text_view.get_buffer()
         buf.handler_block_by_func(self._on_content_changed)
-        buf.set_text(note["content"])
+        # Only the body: the first line is the header, and it belongs to the
+        # meta row above the buffer.
+        buf.set_text(note["body"])
         buf.handler_unblock_by_func(self._on_content_changed)
+        self._sync_tag_choices()
+        self._set_meta(note["title"], note["tag"])
         if self._preview_mode:
-            content = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
             self.web_view.load_html(
-                preview_mod.build_preview_html(content, self.get_style_context()), "file:///"
+                preview_mod.build_preview_html(self._preview_source(), self.get_style_context()),
+                "file:///",
             )
         self._show_editor_view()
+
+    def _set_meta(self, title: str, tag: str):
+        """Fill the meta row without it reading as a user edit."""
+        self._suppress_meta_save = True
+        self.title_entry.set_text(title)
+        self.tag_combo.get_child().set_text(tag or _UNTAGGED_TEXT)
+        self._suppress_meta_save = False
+
+    def _preview_source(self) -> str:
+        """The note as standalone Markdown, title included.
+
+        The buffer holds only the body now, so the H1 has to be put back or
+        the rendered document would start mid-content.
+        """
+        buf = self.text_view.get_buffer()
+        body = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
+        title = self.title_entry.get_text().strip()
+        return f"# {title}\n\n{body}" if title else body
 
     def _schedule_save(self):
         self._cancel_pending_save()
@@ -440,21 +603,86 @@ class NotesPanel(Gtk.Window):
             self._save_timeout = None
 
     def _flush_save(self):
-        """Run a debounced save now — before leaving the note behind."""
-        if self._save_timeout is not None:
-            self._cancel_pending_save()
+        """Commit everything outstanding — before leaving the note behind.
+
+        Not only the debounced body: the title and tag commit on focus-out,
+        which never arrives when the note is left by Escape while one of them
+        still holds the focus.
+        """
+        self._cancel_pending_save()
+        if self._in_editor_view():
             self._do_save()
 
     def _do_save(self):
         self._save_timeout = None
+        if self._trash_mode:
+            return False
         buf = self.text_view.get_buffer()
-        content = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
-        lines = content.splitlines()
-        title = lines[0].lstrip("# ").strip() if lines else "Untitled"
-        self._current_path = notes_mod.save_note(self._current_path, title, content)
+        body = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
+        title = self.title_entry.get_text().strip()
+        tag = self.tag_combo.get_child().get_text()
+        if notes_mod.normalize_tag(tag) == _UNTAGGED_TEXT:
+            tag = ""
+        if not title:
+            # Don't let a note end up called "Untitled" when its body already
+            # says what it is. Writing the derived title back into the entry
+            # keeps the list and the meta row agreeing; typing over it stops
+            # the derivation, since the entry is no longer empty.
+            title = self._derive_title(body)
+            if title:
+                self._set_meta(title, tag)
+        if not body.strip() and (not title or title == self._default_title):
+            # Nothing but the default title — an abandoned "new note" still
+            # leaves no file behind.
+            return False
+        self._default_title = None
+        self._current_path = notes_mod.save_note(self._current_path, title, tag, body)
         notes_mod.set_last_note_path(self._current_path)
         self._refresh_notes(self.search.get_text())
         return False
+
+    def _derive_title(self, body: str) -> str:
+        for line in body.splitlines():
+            line = line.strip().lstrip("#").strip()
+            if line:
+                return line[:60]
+        return ""
+
+    def _save_meta(self):
+        """Commit the title/tag at a transition point — focus-out, Enter, or
+        a pick from the dropdown.
+
+        Deliberately not debounced like the body: the title drives the note's
+        filename through save_note(), so saving mid-word would rename the file
+        once per keystroke.
+        """
+        if self._suppress_meta_save or self._trash_mode:
+            return
+        self._cancel_pending_save()
+        self._do_save()
+
+    def _on_meta_focus_out(self, widget, event):
+        # GTK keeps painting an entry's selection once it loses focus, so the
+        # select-all a new note opens with would stay highlighted while the
+        # caret is already down in the body. Collapse it to the caret.
+        pos = widget.get_position()
+        widget.select_region(pos, pos)
+        self._save_meta()
+        return False
+
+    def _on_title_activate(self, entry):
+        self._save_meta()
+        self.text_view.grab_focus()
+
+    def _on_tag_activate(self, entry):
+        self._save_meta()
+        self.text_view.grab_focus()
+
+    def _on_tag_combo_changed(self, combo):
+        # Only fires for picks from the list; typing in the combo's entry
+        # goes to that entry's own signals, and waits for focus-out/Enter.
+        if combo.get_active() != -1:
+            self._save_meta()
 
     def _on_open_settings(self, btn):
         dialog = SettingsDialog(self._apply_settings, self._reset_geometry)
@@ -482,10 +710,15 @@ class NotesPanel(Gtk.Window):
         notes_mod.set_last_note_path(None)
         buf = self.text_view.get_buffer()
         buf.handler_block_by_func(self._on_content_changed)
-        buf.set_text("# New note\n\n")
+        buf.set_text("")
         buf.handler_unblock_by_func(self._on_content_changed)
-        buf.place_cursor(buf.get_end_iter())
+        self._sync_tag_choices()
+        # A note started while the list is filtered by a tag inherits it —
+        # that filter is the category the user is currently working in.
+        self._default_title = _default_note_title()
+        self._set_meta(self._default_title, self._tag_filter or "")
         self._show_editor_view()
+        self.title_entry.grab_focus()
 
     # --- trash ---
 
@@ -495,7 +728,9 @@ class NotesPanel(Gtk.Window):
         self._trash_mode = True
         self.text_view.set_editable(False)
         self._clear_editor()
+        self._set_meta_sensitive(False)
         self.search.set_sensitive(False)
+        self.tag_filter.set_sensitive(False)
         self._refresh_trash()
         self._show_list_view()
 
@@ -503,9 +738,17 @@ class NotesPanel(Gtk.Window):
         self._trash_mode = False
         self.text_view.set_editable(True)
         self._clear_editor()
+        self._set_meta_sensitive(True)
         self.search.set_sensitive(True)
+        self.tag_filter.set_sensitive(True)
         self._refresh_notes(self.search.get_text())
         self._show_list_view()
+
+    def _set_meta_sensitive(self, sensitive: bool):
+        """A trashed note opens read-only — that has to cover its header too,
+        which lives outside the (already non-editable) text view."""
+        self.title_entry.set_sensitive(sensitive)
+        self.tag_combo.set_sensitive(sensitive)
 
     def _restore_note(self, path: Path):
         notes_mod.restore_note(path)
@@ -531,11 +774,11 @@ class NotesPanel(Gtk.Window):
         self._preview_mode = not self._preview_mode
         self._close_find_bar()
         self.btn_find.set_sensitive(not self._preview_mode)
+        self.meta_row.set_visible(not self._preview_mode)
         if self._preview_mode:
-            buf = self.text_view.get_buffer()
-            content = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
             self.web_view.load_html(
-                preview_mod.build_preview_html(content, self.get_style_context()), "file:///"
+                preview_mod.build_preview_html(self._preview_source(), self.get_style_context()),
+                "file:///",
             )
             self.editor_stack.set_visible_child_name("preview")
             self.btn_preview.set_image(

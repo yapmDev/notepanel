@@ -15,6 +15,41 @@ CORNER_LABELS = {
 }
 
 
+def _title_row(note: dict) -> Gtk.Box:
+    """`Title · tag` — the tag is never shown inside the note itself, so the
+    list is the only place it's visible.
+
+    Nothing expands here: both labels hug the left so the tag sits right where
+    the title text ends. Letting the title fill the row instead would push the
+    tag against the right edge, which is exactly where the delete button
+    appears on hover.
+    """
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+
+    title = Gtk.Label(label=note["title"], xalign=0)
+    title.get_style_context().add_class("note-title")
+    title.set_valign(Gtk.Align.BASELINE)
+    title.set_ellipsize(3)
+    # The title is still what gives way when the row runs out of width: an
+    # ellipsized label's minimum width is far below the tag's natural one.
+    box.pack_start(title, False, False, 0)
+
+    if note.get("tag"):
+        dot = Gtk.Label(label="·")
+        dot.get_style_context().add_class("note-tag-dot")
+        dot.set_valign(Gtk.Align.BASELINE)
+        box.pack_start(dot, False, False, 0)
+
+        tag = Gtk.Label(label=note["tag"], xalign=0)
+        tag.get_style_context().add_class("note-tag")
+        tag.set_valign(Gtk.Align.BASELINE)
+        tag.set_ellipsize(3)
+        tag.set_max_width_chars(14)
+        box.pack_start(tag, False, False, 0)
+
+    return box
+
+
 class NoteRow(Gtk.ListBoxRow):
     def __init__(self, note: dict, on_delete):
         super().__init__()
@@ -26,11 +61,7 @@ class NoteRow(Gtk.ListBoxRow):
         row_box.set_margin_bottom(2)
 
         text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-
-        title = Gtk.Label(label=note["title"], xalign=0)
-        title.get_style_context().add_class("note-title")
-        title.set_ellipsize(3)
-        text_box.pack_start(title, False, False, 0)
+        text_box.pack_start(_title_row(note), False, False, 0)
 
         if note["preview"]:
             preview = Gtk.Label(label=note["preview"], xalign=0)
@@ -87,11 +118,7 @@ class TrashRow(Gtk.ListBoxRow):
         row_box.set_margin_bottom(2)
 
         text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-
-        title = Gtk.Label(label=note["title"], xalign=0)
-        title.get_style_context().add_class("note-title")
-        title.set_ellipsize(3)
-        text_box.pack_start(title, False, False, 0)
+        text_box.pack_start(_title_row(note), False, False, 0)
 
         if note["preview"]:
             preview = Gtk.Label(label=note["preview"], xalign=0)
@@ -211,9 +238,11 @@ class QuickCaptureDialog(Gtk.Window):
         buf = self.text_view.get_buffer()
         content = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False).strip()
         if content:
-            lines = content.splitlines()
-            title = lines[0].lstrip("# ").strip() if lines else "Untitled"
-            notes_mod.save_note(None, title, content)
+            # A capture is all body. Deriving a title line instead of
+            # promoting the first line out of the note is what keeps the
+            # captured text intact — the header line is hidden in the editor.
+            first = next((line.strip() for line in content.splitlines() if line.strip()), "")
+            notes_mod.save_note(None, first[:60], "", content)
         self.destroy()
 
 

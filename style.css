@@ -31,6 +31,25 @@
     min-width: 30px;
 }
 
+/* Every action the bottom bar can mount shares one surface. Which
+   buttons are present changes per destination (_update_bottom_bar),
+   so the surface is defined once here rather than per button —
+   otherwise the same bar reads as a different control strip in the
+   list, the editor and the trash. Matches #tag-filter/#search-entry.
+   background-image is killed explicitly: themes paint the button
+   gradient there, and it covers any background-color set below. */
+#btn-action,
+#btn-new,
+#btn-back,
+#btn-empty-trash {
+    background-image: none;
+    background-color: @theme_base_color;
+    border: 1px solid @borders;
+    border-radius: 8px;
+    box-shadow: none;
+    text-shadow: none;
+}
+
 #search-entry,
 #find-entry {
     min-width: 200px;
@@ -84,15 +103,183 @@
     font-size: 12px;
 }
 
+/* Inline after the title rather than a pill at the row's edge — a badge
+   there would sit under the on-hover delete button. */
+.note-tag {
+    color: @theme_selected_bg_color;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.note-tag-dot {
+    color: mix(@theme_fg_color, @theme_bg_color, 0.6);
+    font-size: 12px;
+}
+
+/* The combo's own background lives on its inner button node, not on
+   #tag-filter itself — styling the combobox alone leaves the theme's
+   default (light, gradient) button painted on top of it. */
+#tag-filter {
+    min-height: 30px;
+    font-size: 12px;
+}
+
+#tag-filter button,
+#tag-filter button.combo {
+    background-image: none;
+    background-color: @theme_base_color;
+    color: @theme_text_color;
+    border: 1px solid @borders;
+    border-radius: 8px;
+    padding: 0 8px;
+    min-height: 30px;
+    box-shadow: none;
+    text-shadow: none;
+}
+
+#tag-filter button:hover,
+#tag-filter button:checked,
+#tag-filter button:active {
+    background-image: none;
+    background-color: shade(@theme_bg_color, 0.95);
+    border-color: @theme_selected_bg_color;
+}
+
+#tag-filter arrow {
+    color: mix(@theme_fg_color, @theme_bg_color, 0.4);
+}
+
+/* ============================================================
+   Tag dropdown popups. A combo's popup is a toplevel, not a
+   child of the combo, so it never inherits the panel's colors
+   and lands on the theme's default (light) menu background.
+   The two combos also popup differently: #tag-filter is a plain
+   ComboBoxText (a GtkMenu), while #meta-tag has an entry, which
+   forces list mode (a popup window wrapping a treeview) — hence
+   both sets of selectors. The provider is screen-global, so
+   these also cover the tray menu, which is the look we want.
+   ============================================================ */
+/* Exactly one node draws the frame. A popup is three nested nodes —
+   window.popup > decoration > menu (or > scrolledwindow in list
+   mode) — so a border on more than one stacks into the visible
+   double outline. The outer two are flattened here and the frame
+   lives on the innermost node, which is also the one that has to
+   carry the background: the theme paints decoration's own light
+   border/shadow otherwise. */
+window.popup,
+window.popup.background,
+window.popup decoration {
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+}
+
+menu,
+menu.background,
+window.popup scrolledwindow {
+    background-color: shade(@theme_bg_color, 0.85);
+    border: 1px solid @borders;
+    border-radius: 8px;
+    padding: 2px 0;
+}
+
+menu menuitem,
+window.popup treeview.view,
+window.popup treeview.view cell {
+    background-color: transparent;
+    color: @theme_fg_color;
+    font-size: 12px;
+    padding: 4px 10px;
+}
+
+menu menuitem:hover,
+window.popup treeview.view:hover,
+window.popup treeview.view:selected {
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+}
+
+menu separator,
+window.popup separator {
+    background-color: @borders;
+}
+
+window.popup viewport {
+    background-color: transparent;
+    border: none;
+}
+
+/* ============================================================
+   Editor meta row — the note's title and tag. They're stored on
+   the file's first line but never shown inside the buffer, so
+   this row is the only place they can be read or edited.
+   ============================================================ */
+#meta-row {
+    background-color: @theme_base_color;
+    padding: 10px 14px 2px 14px;
+}
+
+#meta-title,
+#meta-tag entry {
+    background-color: transparent;
+    color: @theme_text_color;
+    border: none;
+    border-bottom: 1px solid transparent;
+    border-radius: 0;
+    padding: 2px 0;
+    caret-color: @theme_selected_bg_color;
+}
+
+#meta-title {
+    font-size: 15px;
+    font-weight: bold;
+    /* The theme draws an entry's focus frame as an inset box-shadow plus an
+       outline, neither of which `border: none` above touches — the title is
+       meant to read as text in the note, not as a form field. */
+    box-shadow: none;
+    outline-style: none;
+}
+
+/* Neither half of the tag combo is meant to look like a form field: no
+   frame on the entry, and the arrow bare instead of sitting in the theme's
+   grey button. `background-color`/`border` alone don't get there — the theme
+   paints a button's face with a background-image gradient and its frame with
+   an inset box-shadow, and repaints both on hover and while the popup holds
+   the button :active/:checked. */
+#meta-tag {
+    color: @theme_selected_bg_color;
+}
+
+#meta-tag entry {
+    font-size: 12px;
+    color: @theme_selected_bg_color;
+    box-shadow: none;
+    outline-style: none;
+}
+
+#meta-tag button,
+#meta-tag button:hover,
+#meta-tag button:focus,
+#meta-tag button:active,
+#meta-tag button:checked {
+    background-color: transparent;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    outline-style: none;
+    padding: 0 2px;
+    min-height: 0;
+    min-width: 16px;
+    color: @theme_selected_bg_color;
+}
+
 #editor-box {
     background-color: @theme_base_color;
 }
 
 #btn-action {
-    background-color: transparent;
     color: mix(@theme_fg_color, @theme_bg_color, 0.4);
-    border: 1px solid @borders;
-    border-radius: 5px;
     padding: 0 10px;
     font-size: 12px;
 }
@@ -146,18 +333,21 @@
     caret-color: @theme_selected_bg_color;
 }
 
+/* New note and Empty trash keep their accent/destructive colour on
+   the label instead of the fill — the shared surface takes the
+   background, but a primary and a destructive action still must not
+   read as plain neutral buttons. */
 #btn-new {
-    background-color: @theme_selected_bg_color;
-    color: @theme_selected_fg_color;
-    border: 1px solid @borders;
-    border-radius: 8px;
+    color: @theme_selected_bg_color;
     padding: 0 20px;
     font-size: 13px;
     font-weight: bold;
 }
 
 #btn-new:hover {
-    background-color: shade(@theme_selected_bg_color, 1.15);
+    background-color: @theme_selected_bg_color;
+    color: @theme_selected_fg_color;
+    border-color: @theme_selected_bg_color;
 }
 
 .row-delete-btn,
@@ -193,31 +383,27 @@
 }
 
 #btn-back {
-    background-color: transparent;
     color: @theme_fg_color;
-    border: 1px solid @borders;
-    border-radius: 8px;
     padding: 0 14px;
     font-size: 13px;
 }
 
 #btn-back:hover {
     background-color: shade(@theme_bg_color, 0.95);
-    border-color: @unfocused_borders;
+    border-color: @theme_selected_bg_color;
 }
 
 #btn-empty-trash {
-    background-color: @error_color;
-    color: @theme_selected_fg_color;
-    border: 1px solid @borders;
-    border-radius: 8px;
+    color: @error_color;
     padding: 0 14px;
     font-size: 13px;
     font-weight: bold;
 }
 
 #btn-empty-trash:hover {
-    background-color: shade(@error_color, 1.1);
+    background-color: @error_color;
+    color: @theme_selected_fg_color;
+    border-color: @error_color;
 }
 
 .row-restore-btn {
