@@ -7,7 +7,6 @@ gi.require_version("AyatanaAppIndicator3", "0.1")
 from gi.repository import Gtk, GLib, AyatanaAppIndicator3 as AppIndicator
 from pathlib import Path
 from panel import NotesPanel
-from widgets import QuickCaptureDialog
 
 ICON_NAME = "notepanel-symbolic"
 ICON_SOURCE = Path(__file__).parent / "assets" / f"{ICON_NAME}.svg"
@@ -61,16 +60,11 @@ class NotesApp:
         # middle click → toggle straight away, skipping the menu
         self.tray.set_secondary_activate_target(item_open)
 
-    def _open_quick_capture(self):
-        dialog = QuickCaptureDialog()
-        dialog.show_all()
-        dialog.present()
-
     def _setup_signals(self):
         GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self._on_sigusr1)
 
     def _on_sigusr1(self):
-        self._open_quick_capture()
+        self.panel.toggle()
         return GLib.SOURCE_CONTINUE
 
     def run(self):

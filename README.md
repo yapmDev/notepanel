@@ -5,7 +5,7 @@ A lightweight notes panel for Linux/GNOME. Notes are stored as plain Markdown fi
 ## Features
 
 - Tray icon — toggle panel or stop service
-- Quick capture via hotkey (`SIGUSR1`) — opens a popup pre-filled with clipboard content
+- Toggle the panel via hotkey (`SIGUSR1`, e.g. bound to `Super+N`)
 - Markdown editor with live preview
 - Auto-save, full-text search
 - Recycling bin
