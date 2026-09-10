@@ -381,8 +381,12 @@ class NotesPanel(Gtk.Window):
         else:
             self._notes = notes_mod.list_notes(self._tag_filter)
 
+        # `None` is the All filter — the only view where the rows carry more
+        # than one tag between them, so the only one where the `tag :` prefix
+        # on each row says anything the dropdown isn't already saying.
+        show_tag = self._tag_filter is None
         for note in self._notes:
-            self.list_box.add(NoteRow(note, self._delete_note_by_path))
+            self.list_box.add(NoteRow(note, self._delete_note_by_path, show_tag=show_tag))
 
         self._set_status_count(len(self._notes))
 

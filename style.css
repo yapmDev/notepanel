@@ -9,8 +9,8 @@
      1.15em   title     the note's title, a dialog's title
      1em      body      anything the user reads or types; never
                         declared, it is simply the theme's size
-     0.85em   caption   metadata *about* the body — tags, note
-                        previews, match counts, hints
+     0.85em   caption   metadata *about* the body — note previews,
+                        the editor's tag field, match counts, hints
 
    `em` resolves against the parent node, so it multiplies down
    the tree: declare a size on the outermost node of a widget
@@ -117,17 +117,40 @@
     font-size: 0.85em;
 }
 
-/* Inline after the title rather than a pill at the row's edge — a badge
-   there would sit under the on-hover delete button. */
+/* Leads the title line as a `tag :` prefix. Plain text rather than a pill:
+   a filled badge in the first position of every row would out-shout the
+   title, which is the thing being scanned for. No font-size: the prefix
+   reads as part of the title line, so it takes the title's own size and
+   weight and separates from it by colour alone. */
 .note-tag {
     color: @theme_selected_bg_color;
-    font-size: 0.85em;
     font-weight: bold;
 }
 
-.note-tag-dot {
-    color: mix(@theme_fg_color, @theme_bg_color, 0.6);
-    font-size: 0.85em;
+/* The row's only action, revealed on hover at the far end of the title line.
+   A label, not an icon button, and deliberately frameless — a bordered
+   control there would read as part of the note's own content. The theme
+   paints a button's face with a background-image gradient and its frame with
+   an inset box-shadow, so neither goes away by setting background-color and
+   border alone. */
+.row-remove-btn {
+    background-image: none;
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    text-shadow: none;
+    outline-style: none;
+    padding: 0 2px;
+    min-height: 0;
+    min-width: 0;
+    font-weight: bold;
+    color: @error_color;
+}
+
+/* It is already red at rest, so hover can only deepen it — the cue that the
+   pointer is on the action, not the cue that the action is destructive. */
+.row-remove-btn:hover {
+    color: shade(@error_color, 0.8);
 }
 
 /* The combo's own background lives on its inner button node, not on

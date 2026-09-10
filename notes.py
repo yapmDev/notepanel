@@ -68,7 +68,9 @@ def _note_from_path(path: Path) -> dict:
         "title": title or path.stem,
         "tag": tag,
         "body": body,
-        "preview": " ".join(body.split())[:80],
+        # Long enough to fill the list row's two preview lines; the label
+        # ellipsizes whatever is left over.
+        "preview": " ".join(body.split())[:200],
         "content": content,
         "mtime": path.stat().st_mtime,
     }

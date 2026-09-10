@@ -1,7 +1,7 @@
 import gi
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk, Gdk, Pango
 import settings as settings_mod
 
 CORNER_LABELS = {
@@ -13,75 +13,111 @@ CORNER_LABELS = {
 }
 
 
-def _title_row(note: dict) -> Gtk.Box:
-    """`Title · tag` — the tag is never shown inside the note itself, so the
-    list is the only place it's visible.
+def _title_row(note: dict, *actions: Gtk.Widget, show_tag: bool = True) -> Gtk.Box:
+    """`tag : Title              [action]` — the tag is never shown inside the
+    note itself, so the list is the only place it's visible.
 
-    Nothing expands here: both labels hug the left so the tag sits right where
-    the title text ends. Letting the title fill the row instead would push the
-    tag against the right edge, which is exactly where the delete button
-    appears on hover.
+    The tag leads the line at its natural width and the title takes whatever is
+    left, so the titles start at a different x on every row; giving the tag a
+    fixed `set_width_chars` would turn that ragged edge into a real column at
+    the cost of wasting width on short tags. An untagged note simply has no
+    prefix and starts at the row's left edge.
+
+    `show_tag` drops the prefix entirely: with a tag filter active every visible
+    row carries the same one, so the prefix would repeat down the whole list
+    without telling the reader anything the dropdown isn't already showing.
+
+    Actions are packed at the far end of this line, which is what the tag moving
+    to the front frees up.
     """
     box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+
+    if show_tag and note.get("tag"):
+        # The colon rides on the tag's own label rather than a separator widget
+        # of its own — it belongs to the prefix and takes the prefix's colour.
+        tag = Gtk.Label(label=f"{note['tag']} :", xalign=0)
+        tag.get_style_context().add_class("note-tag")
+        tag.set_valign(Gtk.Align.BASELINE)
+        tag.set_ellipsize(Pango.EllipsizeMode.END)
+        tag.set_max_width_chars(14)
+        box.pack_start(tag, False, False, 0)
 
     title = Gtk.Label(label=note["title"], xalign=0)
     title.get_style_context().add_class("note-title")
     title.set_valign(Gtk.Align.BASELINE)
-    title.set_ellipsize(3)
-    # The title is still what gives way when the row runs out of width: an
-    # ellipsized label's minimum width is far below the tag's natural one.
-    box.pack_start(title, False, False, 0)
+    title.set_ellipsize(Pango.EllipsizeMode.END)
+    box.pack_start(title, True, True, 0)
 
-    if note.get("tag"):
-        dot = Gtk.Label(label="·")
-        dot.get_style_context().add_class("note-tag-dot")
-        dot.set_valign(Gtk.Align.BASELINE)
-        box.pack_start(dot, False, False, 0)
-
-        tag = Gtk.Label(label=note["tag"], xalign=0)
-        tag.get_style_context().add_class("note-tag")
-        tag.set_valign(Gtk.Align.BASELINE)
-        tag.set_ellipsize(3)
-        tag.set_max_width_chars(14)
-        box.pack_start(tag, False, False, 0)
+    # pack_end fills right-to-left, so reverse to have `actions` read
+    # left-to-right on screen in the order they were passed.
+    for action in reversed(actions):
+        action.set_valign(Gtk.Align.CENTER)
+        box.pack_end(action, False, False, 0)
 
     return box
 
 
+def _preview_row(note: dict, *actions: Gtk.Widget) -> Gtk.Box:
+    """The row's second line: up to two lines of body preview, with any actions
+    passed here pinned to its right.
+
+    A note with an empty body gets no label at all (an empty one would still
+    claim a line's height); actions then sit alone on this line, which keeps
+    them in the same place on every row.
+    """
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+
+    if note["preview"]:
+        preview = Gtk.Label(label=note["preview"], xalign=0)
+        preview.get_style_context().add_class("note-preview")
+        # set_lines() only takes effect with wrapping on and an ellipsize mode
+        # set; without both, the label falls back to a single unbounded line.
+        preview.set_line_wrap(True)
+        preview.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+        preview.set_lines(2)
+        preview.set_ellipsize(Pango.EllipsizeMode.END)
+        preview.set_valign(Gtk.Align.START)
+        box.pack_start(preview, True, True, 0)
+
+    for action in reversed(actions):
+        action.set_valign(Gtk.Align.CENTER)
+        box.pack_end(action, False, False, 0)
+
+    return box
+
+
+def _icon_button(icon_name: str, css_class: str) -> Gtk.Button:
+    icon_box = Gtk.Box()
+    icon_box.pack_start(
+        Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.SMALL_TOOLBAR),
+        True, True, 0,
+    )
+    button = Gtk.Button()
+    button.add(icon_box)
+    button.get_style_context().add_class(css_class)
+    return button
+
+
 class NoteRow(Gtk.ListBoxRow):
-    def __init__(self, note: dict, on_delete):
+    def __init__(self, note: dict, on_delete, show_tag: bool = True):
         super().__init__()
         self.note = note
         self.get_style_context().add_class("note-row")
 
-        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        row_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         row_box.set_margin_top(2)
         row_box.set_margin_bottom(2)
 
-        text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        text_box.pack_start(_title_row(note), False, False, 0)
+        self.remove_btn = Gtk.Button(label="Remove")
+        self.remove_btn.get_style_context().add_class("row-remove-btn")
+        self.remove_btn.connect("clicked", lambda _: on_delete(note["path"]))
 
-        if note["preview"]:
-            preview = Gtk.Label(label=note["preview"], xalign=0)
-            preview.get_style_context().add_class("note-preview")
-            preview.set_ellipsize(3)
-            text_box.pack_start(preview, False, False, 0)
+        row_box.pack_start(_title_row(note, self.remove_btn, show_tag=show_tag), False, False, 0)
+        row_box.pack_start(_preview_row(note), False, False, 0)
 
-        del_icon_box = Gtk.Box()
-        del_icon_box.pack_start(
-            Gtk.Image.new_from_icon_name("user-trash-symbolic", Gtk.IconSize.SMALL_TOOLBAR),
-            True, True, 0,
-        )
-
-        self.del_btn = Gtk.Button()
-        self.del_btn.add(del_icon_box)
-        self.del_btn.get_style_context().add_class("row-delete-btn")
-        self.del_btn.set_valign(Gtk.Align.CENTER)
-        self.del_btn.connect("clicked", lambda _: on_delete(note["path"]))
-
-        row_box.pack_start(text_box, True, True, 0)
-        row_box.pack_start(self.del_btn, False, False, 0)
-
+        # The row itself gets no enter/leave events — GtkListBoxRow has no
+        # window of its own to receive them — so the hover reveal hangs off an
+        # EventBox wrapping the content.
         event_box = Gtk.EventBox()
         event_box.add(row_box)
         event_box.connect("enter-notify-event", self._on_enter)
@@ -89,19 +125,21 @@ class NoteRow(Gtk.ListBoxRow):
 
         self.add(event_box)
         self.show_all()
-        # set after show_all() so the icon inside keeps its visible flag;
+        # set after show_all() so the label inside keeps its visible flag;
         # no_show_all only needs to stop future show_all() calls from
         # re-revealing the button itself
-        self.del_btn.set_no_show_all(True)
-        self.del_btn.hide()
+        self.remove_btn.set_no_show_all(True)
+        self.remove_btn.hide()
 
     def _on_enter(self, widget, event):
-        self.del_btn.show()
+        self.remove_btn.show()
         return False
 
     def _on_leave(self, widget, event):
+        # INFERIOR means the pointer only crossed into a child of the row —
+        # the button itself, most of the time — and has not actually left.
         if event.detail != Gdk.NotifyType.INFERIOR:
-            self.del_btn.hide()
+            self.remove_btn.hide()
         return False
 
 
@@ -111,41 +149,21 @@ class TrashRow(Gtk.ListBoxRow):
         self.note = note
         self.get_style_context().add_class("note-row")
 
-        row_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        row_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         row_box.set_margin_top(2)
         row_box.set_margin_bottom(2)
 
-        text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        text_box.pack_start(_title_row(note), False, False, 0)
-
-        if note["preview"]:
-            preview = Gtk.Label(label=note["preview"], xalign=0)
-            preview.get_style_context().add_class("note-preview")
-            preview.set_ellipsize(3)
-            text_box.pack_start(preview, False, False, 0)
-
-        btn_restore = Gtk.Button(label="↩")
+        btn_restore = Gtk.Button(label="\u21a9")
         btn_restore.get_style_context().add_class("row-restore-btn")
         btn_restore.set_tooltip_text("Restore")
-        btn_restore.set_valign(Gtk.Align.CENTER)
         btn_restore.connect("clicked", lambda _: on_restore(note["path"]))
 
-        del_icon_box = Gtk.Box()
-        del_icon_box.pack_start(
-            Gtk.Image.new_from_icon_name("edit-delete-symbolic", Gtk.IconSize.SMALL_TOOLBAR),
-            True, True, 0,
-        )
-
-        btn_del = Gtk.Button()
-        btn_del.add(del_icon_box)
-        btn_del.get_style_context().add_class("row-delete-btn")
+        btn_del = _icon_button("edit-delete-symbolic", "row-delete-btn")
         btn_del.set_tooltip_text("Delete permanently")
-        btn_del.set_valign(Gtk.Align.CENTER)
         btn_del.connect("clicked", lambda _: on_delete_permanent(note["path"]))
 
-        row_box.pack_start(text_box, True, True, 0)
-        row_box.pack_start(btn_restore, False, False, 0)
-        row_box.pack_start(btn_del, False, False, 0)
+        row_box.pack_start(_title_row(note), False, False, 0)
+        row_box.pack_start(_preview_row(note, btn_restore, btn_del), False, False, 0)
 
         self.add(row_box)
         self.show_all()
