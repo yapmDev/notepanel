@@ -10,6 +10,7 @@ import notes as notes_mod
 import preview as preview_mod
 import geometry as geometry_mod
 import settings as settings_mod
+from undo import UndoStack
 from widgets import NoteRow, TrashRow, SettingsDialog
 
 # Ids for the two tag-filter entries that aren't tags themselves. Uppercase is
@@ -211,6 +212,8 @@ class NotesPanel(Gtk.Window):
         self.text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         text_buf = self.text_view.get_buffer()
         text_buf.connect("changed", self._on_content_changed)
+        # GTK 3 gives a text buffer no undo of its own; this records one.
+        self.undo_stack = UndoStack(text_buf)
         self.find_tag = text_buf.create_tag("find-match", background="#ffe066", foreground="#000000")
         self.find_tag_current = text_buf.create_tag(
             "find-match-current", background="#ff9800", foreground="#000000"
@@ -553,6 +556,9 @@ class NotesPanel(Gtk.Window):
         buf.handler_block_by_func(self._on_content_changed)
         buf.set_text("")
         buf.handler_unblock_by_func(self._on_content_changed)
+        # Emptying the buffer isn't an edit to undo — and undoing across it
+        # would put the closed note's body back under whatever opens next.
+        self.undo_stack.reset()
         self._set_meta("", "")
         self._current_path = None
         self._default_title = None
@@ -570,6 +576,7 @@ class NotesPanel(Gtk.Window):
         # meta row above the buffer.
         buf.set_text(note["body"])
         buf.handler_unblock_by_func(self._on_content_changed)
+        self.undo_stack.reset()
         self._sync_tag_choices()
         self._set_meta(note["title"], note["tag"])
         if self._preview_mode:
@@ -716,6 +723,7 @@ class NotesPanel(Gtk.Window):
         buf.handler_block_by_func(self._on_content_changed)
         buf.set_text("")
         buf.handler_unblock_by_func(self._on_content_changed)
+        self.undo_stack.reset()
         self._sync_tag_choices()
         # A note started while the list is filtered by a tag inherits it —
         # that filter is the category the user is currently working in.
@@ -886,6 +894,27 @@ class NotesPanel(Gtk.Window):
         buf.select_range(buf.get_start_iter(), buf.get_end_iter())
         self.text_view.grab_focus()
 
+    def _undo_target(self) -> bool:
+        """Whether Ctrl+Z belongs to the body right now.
+
+        The history covers the buffer only: the title and tag entries are
+        plain GTK 3 widgets with no undo of their own, and the find entry
+        isn't the note. Unless the text view itself has the focus the
+        shortcut has to pass through untouched. That also covers preview
+        mode and a trashed note, where the view is hidden or read-only.
+        """
+        return self.text_view.has_focus() and self.text_view.get_editable()
+
+    def _on_undo(self):
+        self.undo_stack.undo()
+        self.text_view.scroll_mark_onscreen(self.text_view.get_buffer().get_insert())
+        return True
+
+    def _on_redo(self):
+        self.undo_stack.redo()
+        self.text_view.scroll_mark_onscreen(self.text_view.get_buffer().get_insert())
+        return True
+
     def _on_content_changed(self, buf):
         self._schedule_save()
         if self.find_revealer.get_reveal_child() and self.find_entry.get_text():
@@ -909,6 +938,19 @@ class NotesPanel(Gtk.Window):
                 self._on_back(None)
                 return True
             self._hide()
+            return None
+        # Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y, for the other habit). The window
+        # sees keys before the focused widget, so the guard is what keeps the
+        # shortcut from firing while the caret is somewhere else.
+        mods = event.state & Gtk.accelerator_get_default_mod_mask()
+        key = Gdk.keyval_to_lower(event.keyval)
+        ctrl = Gdk.ModifierType.CONTROL_MASK
+        if key == Gdk.KEY_z and mods == ctrl and self._undo_target():
+            return self._on_undo()
+        if key == Gdk.KEY_z and mods == ctrl | Gdk.ModifierType.SHIFT_MASK and self._undo_target():
+            return self._on_redo()
+        if key == Gdk.KEY_y and mods == ctrl and self._undo_target():
+            return self._on_redo()
 
     def _on_delete_event(self, widget, event):
         self._hide()
