@@ -1,6 +1,22 @@
-* {
-    font-family: "Ubuntu", sans-serif;
-}
+/* ============================================================
+   Typography. The app has no font of its own: both the family
+   and the base size come from the GTK theme — i.e. whatever the
+   user picked as GNOME's interface font — so nothing below sets
+   a font-family, and no size is written in px.
+
+   Sizes are relative to that base, and there are only three:
+
+     1.15em   title     the note's title, a dialog's title
+     1em      body      anything the user reads or types; never
+                        declared, it is simply the theme's size
+     0.85em   caption   metadata *about* the body — tags, note
+                        previews, match counts, hints
+
+   `em` resolves against the parent node, so it multiplies down
+   the tree: declare a size on the outermost node of a widget
+   only, and never restate it on a child that already inherits
+   the right one.
+   ============================================================ */
 
 #panel-root {
     background-color: @theme_bg_color;
@@ -61,7 +77,6 @@
     border: 1px solid @borders;
     border-radius: 8px;
     padding: 0 12px;
-    font-size: 14px;
     caret-color: @theme_selected_bg_color;
 }
 
@@ -94,26 +109,25 @@
 
 .note-title {
     color: @theme_fg_color;
-    font-size: 13px;
     font-weight: bold;
 }
 
 .note-preview {
     color: mix(@theme_fg_color, @theme_bg_color, 0.5);
-    font-size: 12px;
+    font-size: 0.85em;
 }
 
 /* Inline after the title rather than a pill at the row's edge — a badge
    there would sit under the on-hover delete button. */
 .note-tag {
     color: @theme_selected_bg_color;
-    font-size: 12px;
+    font-size: 0.85em;
     font-weight: bold;
 }
 
 .note-tag-dot {
     color: mix(@theme_fg_color, @theme_bg_color, 0.6);
-    font-size: 12px;
+    font-size: 0.85em;
 }
 
 /* The combo's own background lives on its inner button node, not on
@@ -121,7 +135,7 @@
    default (light, gradient) button painted on top of it. */
 #tag-filter {
     min-height: 30px;
-    font-size: 12px;
+    font-size: 0.85em;
 }
 
 #tag-filter button,
@@ -189,8 +203,14 @@ window.popup treeview.view,
 window.popup treeview.view cell {
     background-color: transparent;
     color: @theme_fg_color;
-    font-size: 12px;
     padding: 4px 10px;
+}
+
+/* Caption, but declared on the popup's own node only — `cell` is a child of
+   treeview.view and inherits it; setting it on both would multiply. */
+menu menuitem,
+window.popup treeview.view {
+    font-size: 0.85em;
 }
 
 menu menuitem:hover,
@@ -232,7 +252,7 @@ window.popup viewport {
 }
 
 #meta-title {
-    font-size: 15px;
+    font-size: 1.15em;
     font-weight: bold;
     /* The theme draws an entry's focus frame as an inset box-shadow plus an
        outline, neither of which `border: none` above touches — the title is
@@ -252,7 +272,7 @@ window.popup viewport {
 }
 
 #meta-tag entry {
-    font-size: 12px;
+    font-size: 0.85em;
     color: @theme_selected_bg_color;
     box-shadow: none;
     outline-style: none;
@@ -281,7 +301,7 @@ window.popup viewport {
 #btn-action {
     color: mix(@theme_fg_color, @theme_bg_color, 0.4);
     padding: 0 10px;
-    font-size: 12px;
+    font-size: 0.85em;
 }
 
 #btn-action:hover {
@@ -302,7 +322,6 @@ window.popup viewport {
     border: 1px solid @borders;
     border-radius: 6px;
     padding: 0 8px;
-    font-size: 12px;
 }
 
 #find-entry:focus {
@@ -311,7 +330,7 @@ window.popup viewport {
 
 #find-count {
     color: mix(@theme_fg_color, @theme_bg_color, 0.5);
-    font-size: 11px;
+    font-size: 0.85em;
     padding: 0 4px;
 }
 
@@ -329,7 +348,6 @@ window.popup viewport {
 #editor-text {
     border: none;
     padding: 12px 14px;
-    font-size: 13px;
     caret-color: @theme_selected_bg_color;
 }
 
@@ -340,7 +358,6 @@ window.popup viewport {
 #btn-new {
     color: @theme_selected_bg_color;
     padding: 0 20px;
-    font-size: 13px;
     font-weight: bold;
 }
 
@@ -362,7 +379,7 @@ window.popup viewport {
     border: 1px solid @borders;
     border-radius: 6px;
     padding: 0;
-    font-size: 12px;
+    font-size: 0.85em;
 }
 
 .row-delete-btn:hover {
@@ -385,7 +402,6 @@ window.popup viewport {
 #btn-back {
     color: @theme_fg_color;
     padding: 0 14px;
-    font-size: 13px;
 }
 
 #btn-back:hover {
@@ -396,7 +412,6 @@ window.popup viewport {
 #btn-empty-trash {
     color: @error_color;
     padding: 0 14px;
-    font-size: 13px;
     font-weight: bold;
 }
 
@@ -412,7 +427,7 @@ window.popup viewport {
     border: 1px solid @borders;
     border-radius: 6px;
     padding: 0;
-    font-size: 12px;
+    font-size: 0.85em;
 }
 
 .row-restore-btn:hover {
@@ -422,7 +437,7 @@ window.popup viewport {
 
 #status-label {
     color: mix(@theme_fg_color, @theme_bg_color, 0.5);
-    font-size: 13px;
+    font-size: 0.85em;
     padding: 0 2px 0 8px;
 }
 
@@ -438,16 +453,15 @@ window.popup viewport {
 
 #settings-title {
     color: @theme_fg_color;
-    font-size: 15px;
+    font-size: 1.15em;
     font-weight: bold;
 }
 
 #settings-label {
     color: mix(@theme_fg_color, @theme_bg_color, 0.4);
-    font-size: 12px;
 }
 
 #settings-hint {
     color: mix(@theme_fg_color, @theme_bg_color, 0.55);
-    font-size: 11px;
+    font-size: 0.85em;
 }
