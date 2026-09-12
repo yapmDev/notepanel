@@ -76,7 +76,7 @@ def _note_from_path(path: Path) -> dict:
     }
 
 
-def _filter_by_tag(notes: list[dict], tag: str | None) -> list[dict]:
+def filter_by_tag(notes: list[dict], tag: str | None) -> list[dict]:
     """`None` keeps every note; `""` keeps only the untagged ones."""
     if tag is None:
         return notes
@@ -95,17 +95,19 @@ def list_notes(tag: str | None = None) -> list[dict]:
         _note_from_path(p)
         for p in sorted(NOTES_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
     ]
-    return _filter_by_tag(notes, tag)
+    return filter_by_tag(notes, tag)
 
 
-def list_tags() -> list[tuple[str, int]]:
+def list_tags(notes: list[dict] | None = None) -> list[tuple[str, int]]:
     """Every tag in use with its note count, untagged first (as `""`).
 
     Derived from the notes themselves rather than tracked separately, so a
-    tag exists exactly as long as some note still carries it.
+    tag exists exactly as long as some note still carries it. `notes` counts
+    an already-loaded list instead of reading the directory again, which is
+    what a caller about to show those same notes has in hand anyway.
     """
     counts: dict[str, int] = {}
-    for note in list_notes():
+    for note in (list_notes() if notes is None else notes):
         counts[note["tag"]] = counts.get(note["tag"], 0) + 1
     return sorted(counts.items())
 
@@ -118,21 +120,23 @@ def list_trash() -> list[dict]:
     ]
 
 
-def search_notes(query: str, tag: str | None = None) -> list[dict]:
-    ensure_dir()
+def search_notes(query: str, tag: str | None = None, notes: list[dict] | None = None) -> list[dict]:
+    """Notes whose title matches `query`. `notes` searches an already-loaded
+    list rather than reading every note off disk again."""
     q = query.lower().strip()
+    if notes is None:
+        notes = list_notes()
     if not q:
-        return list_notes(tag)
+        return filter_by_tag(notes, tag)
     matched = []
-    for p in sorted(NOTES_DIR.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
-        match = _FILENAME_RE.match(p.name)
-        name_part = match.group(1) if match else p.stem
-        note = _note_from_path(p)
+    for note in notes:
+        match = _FILENAME_RE.match(note["path"].name)
+        name_part = match.group(1) if match else note["path"].stem
         # The filename is a slug of the title, so it misses punctuation and
         # accents the title itself still has — match both.
         if q in name_part.lower() or q in note["title"].lower():
             matched.append(note)
-    return _filter_by_tag(matched, tag)
+    return filter_by_tag(matched, tag)
 
 
 def _synced_path(path: Path, new_slug: str) -> Path:

@@ -6,6 +6,10 @@ SETTINGS_PATH = SETTINGS_DIR / "settings.json"
 
 CORNERS = ("top-right", "top-left", "bottom-right", "bottom-left", "center")
 
+# The two shapes the notes list can take — the trash, being the same list
+# with different rows in it, follows the same setting.
+NOTES_VIEWS = ("list", "grid")
+
 # App-defined geometry default: fixed, not user-configurable. Used as the
 # initial corner/size and as the target of "reset position and size".
 DEFAULT_CORNER = "center"
@@ -24,6 +28,7 @@ DEFAULTS = {
     "height_percent": DEFAULT_HEIGHT_PERCENT,
     "hide_on_focus_out": False,
     "remember_note_minutes": DEFAULT_REMEMBER_NOTE_MINUTES,
+    "notes_view": "list",
     "last_x": None,
     "last_y": None,
     "last_width": None,
@@ -46,6 +51,8 @@ def load_settings() -> dict:
     settings["width_percent"] = min(100, max(1, int(settings["width_percent"])))
     settings["height_percent"] = min(100, max(1, int(settings["height_percent"])))
     settings["hide_on_focus_out"] = bool(settings["hide_on_focus_out"])
+    if settings["notes_view"] not in NOTES_VIEWS:
+        settings["notes_view"] = DEFAULTS["notes_view"]
     try:
         minutes = int(settings["remember_note_minutes"])
     except (TypeError, ValueError):
@@ -69,6 +76,12 @@ def save_geometry(x: int, y: int, w: int, h: int):
     settings["last_y"] = y
     settings["last_width"] = w
     settings["last_height"] = h
+    save_settings(settings)
+
+
+def save_notes_view(view: str):
+    settings = load_settings()
+    settings["notes_view"] = view
     save_settings(settings)
 
 

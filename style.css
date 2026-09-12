@@ -84,7 +84,13 @@
     border-color: @theme_selected_bg_color;
 }
 
-#note-list {
+/* The grid is a plain box, not a scrollable widget of its own, so the
+   scrolled window wraps it in a viewport — which paints the theme's base
+   colour over the panel's own ground unless it's told not to. */
+#note-list,
+#note-grid,
+#note-grid-scroll,
+#note-grid-scroll viewport {
     background-color: transparent;
 }
 
@@ -96,7 +102,11 @@
     border: 1px solid transparent;
 }
 
-.note-row:hover {
+/* `.hover` is the class form of the same paint, for the grid card: the
+   pointer enters the event box around it, not the painted box itself, so
+   that box never reaches the :hover state on its own. */
+.note-row:hover,
+.note-row.hover {
     background-color: shade(@theme_bg_color, 0.95);
     border-color: @unfocused_borders;
 }
@@ -105,6 +115,34 @@
 .note-row.selected {
     background-color: shade(@theme_bg_color, 0.95);
     border-color: @theme_selected_bg_color;
+}
+
+/* A card is the same painted surface as a row, only narrower: the margin
+   that separates rows vertically has to separate columns horizontally too,
+   and the padding comes down because a quarter of the panel's width is a
+   much scarcer thing to spend on empty edges. It is also the only place the
+   card's height comes from — nothing here sets one, so a card is as tall as
+   the text inside it and no taller. */
+.note-card {
+    padding: 8px 10px;
+    margin: 3px 4px;
+}
+
+/* A focused card (it answers Enter like a list row does) shows it the way a
+   selected row does — an accent border, not the theme's dashed focus ring
+   drawn square across the card's rounded corners. Class rather than :focus
+   for the same reason as .hover: the focus belongs to the event box. */
+.note-card.focused {
+    outline: none;
+    background-color: shade(@theme_bg_color, 0.95);
+    border-color: @theme_selected_bg_color;
+}
+
+/* The cards carry the gap between the columns in their own side margins;
+   this is the other half of the same gap at the grid's outer edges, so the
+   grid is inset from the panel by as much as the list is. */
+#note-grid {
+    margin: 0 4px;
 }
 
 .note-title {

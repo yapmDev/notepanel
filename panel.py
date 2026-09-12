@@ -11,7 +11,7 @@ import preview as preview_mod
 import geometry as geometry_mod
 import settings as settings_mod
 from undo import UndoStack
-from widgets import NoteRow, TrashRow, SettingsDialog
+from widgets import NoteRow, NoteCard, TrashRow, TrashCard, SettingsDialog
 
 # Ids for the two tag-filter entries that aren't tags themselves. Uppercase is
 # what keeps them from colliding with a real tag: notes.normalize_tag()
@@ -25,6 +25,11 @@ _TAG_NONE = "NONE"
 # screen: it maps back to "" on save, so an untagged note stays in the one
 # untagged group (_TAG_NONE) instead of spawning a real tag that reads the same.
 _UNTAGGED_TEXT = "untagged"
+
+# Columns in the grid view — a fixed two, not a count derived from the
+# panel's width: the panel is a narrow side panel, and a third column makes
+# each card too thin for the title line it has to carry.
+_GRID_COLS = 2
 
 
 def _default_note_title() -> str:
@@ -52,6 +57,16 @@ class NotesPanel(Gtk.Window):
         self._focus_lost_at: float = 0.0
         self._hide_timeout: int | None = None
         self._trash_mode = False
+        # "list" or "grid" — the shape both note lists are shown in, the
+        # trash included, remembered across restarts.
+        self._notes_view = settings_mod.load_settings()["notes_view"]
+        # Set when a save changed the notes while the editor was up, i.e.
+        # while the list was nobody's business to rebuild.
+        self._list_dirty = False
+        # Grid state: the cards in note order and the column boxes they are
+        # dealt into, both rebuilt from scratch on every refresh.
+        self._grid_cards: list = []
+        self._grid_columns: list = []
         # None = every tag, "" = only untagged, otherwise that one tag.
         self._tag_filter: str | None = None
         self._tag_filter_items: list[tuple[str, int]] = []
@@ -108,23 +123,74 @@ class NotesPanel(Gtk.Window):
         self.tag_filter.connect("changed", self._on_tag_filter_changed)
         search_box.pack_start(self.tag_filter, False, False, 0)
 
-        # Sits in the search row, to the right of the (centered) entry. Shown
-        # only when the list has results — no_show_all so the panel's show_all()
-        # can't override the hidden state set by _refresh_notes/_refresh_trash.
-        self.status_label = Gtk.Label(label="", xalign=1)
+        # Holds the far-right slot of the search row, past the status count.
+        # It belongs with the tag filter at the other end rather than in the
+        # bottom bar: both say how the list below is shown, and neither is an
+        # action on a note. The row is hidden in the editor, which is also
+        # exactly where the toggle has nothing to shape — and it stays live in
+        # the trash, where the search and the filter beside it go insensitive.
+        self.btn_view_toggle = Gtk.Button()
+        self.btn_view_toggle.set_name("btn-action")
+        self.btn_view_toggle.set_valign(Gtk.Align.CENTER)
+        # One image swapped in place rather than a fresh one per toggle: an
+        # image set on a button later has to be shown again itself, and the
+        # search row's no_show_all means nothing else would ever do it.
+        self._view_toggle_icon = Gtk.Image()
+        self.btn_view_toggle.set_image(self._view_toggle_icon)
+        self.btn_view_toggle.connect("clicked", self._on_toggle_notes_view)
+        self._sync_view_toggle()
+        # pack_end fills right-to-left, so this claims the end of the row and
+        # the status count then sits to its left.
+        search_box.pack_end(self.btn_view_toggle, False, False, 0)
+
+        # Sits in the search row between the (centered) entry and the view
+        # toggle, and centers itself in whatever that gap turns out to be: it
+        # takes the leftover space of the row (expand) and centers its text in
+        # it (xalign), so the count keeps its own place as the panel is
+        # resized instead of hugging the button or the entry. Shown only when
+        # the list has results — no_show_all so the panel's show_all() can't
+        # override the hidden state set by _refresh_notes/_refresh_trash, and
+        # while hidden it claims none of that space either.
+        self.status_label = Gtk.Label(label="", xalign=0.5)
         self.status_label.set_name("status-label")
         self.status_label.set_no_show_all(True)
-        search_box.pack_end(self.status_label, False, False, 0)
+        search_box.pack_end(self.status_label, True, True, 0)
 
-        scroll = Gtk.ScrolledWindow()
-        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scroll.set_vexpand(True)
+        list_scroll = Gtk.ScrolledWindow()
+        list_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        list_scroll.set_vexpand(True)
 
         self.list_box = Gtk.ListBox()
         self.list_box.set_name("note-list")
         self.list_box.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.list_box.connect("row-activated", self._on_row_activated)
-        scroll.add(self.list_box)
+        list_scroll.add(self.list_box)
+
+        grid_scroll = Gtk.ScrolledWindow()
+        grid_scroll.set_name("note-grid-scroll")
+        grid_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        grid_scroll.set_vexpand(True)
+        # The width each card is measured against when the cards are dealt.
+        self.grid_scroll = grid_scroll
+
+        # Staggered grid: a row of equal-width columns, each a plain vertical
+        # box of cards. Not a GtkFlowBox — that gives every cell in a line the
+        # height of the tallest, so one long note leaves a hole under every
+        # short one beside it. Cards go into whichever column is shortest so
+        # far (_layout_grid), which is the whole of the masonry.
+        self.grid_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        self.grid_box.set_name("note-grid")
+        self.grid_box.set_homogeneous(True)
+        self.grid_box.set_valign(Gtk.Align.START)
+        grid_scroll.add(self.grid_box)
+
+        # The two shapes of the same notes list. A stack rather than one
+        # container repacked in place: each keeps its own scroll position, and
+        # switching costs nothing but a page change plus a repopulate of the
+        # page being switched to.
+        self.list_stack = Gtk.Stack()
+        self.list_stack.add_named(list_scroll, "list")
+        self.list_stack.add_named(grid_scroll, "grid")
 
         editor_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         editor_box.set_name("editor-box")
@@ -270,13 +336,19 @@ class NotesPanel(Gtk.Window):
         self.main_stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
         self.main_stack.set_transition_duration(120)
         self.main_stack.set_vexpand(True)
-        self.main_stack.add_named(scroll, "list")
+        # A stack sizes itself to the largest of all its pages by default,
+        # which means measuring the notes list (every card's text wrapped)
+        # while the editor is the one on screen. Nothing here needs that: the
+        # window's size comes from geometry.py and both pages expand into it.
+        self.main_stack.set_hhomogeneous(False)
+        self.main_stack.set_vhomogeneous(False)
+        self.main_stack.add_named(self.list_stack, "list")
         self.main_stack.add_named(editor_box, "editor")
         # A stack can only switch to a child that is visible itself, and the
         # window's show_all() doesn't run until the first toggle() — show both
         # pages now so switching works before that (e.g. reopening the last
         # note during __init__). The stack still shows only one at a time.
-        scroll.show_all()
+        self.list_stack.show_all()
         editor_box.show_all()
         self.main_stack.set_visible_child_name("list")
 
@@ -372,36 +444,120 @@ class NotesPanel(Gtk.Window):
         geometry_mod.apply_geometry(self, x, y, w, h)
 
     def _refresh_notes(self, query: str = ""):
+        self._list_dirty = False
+        # One read of the notes directory feeds all three of the dropdown, the
+        # query and the rows: every note is parsed off disk here, and this runs
+        # on every save, every search keystroke and every filter change.
+        all_notes = notes_mod.list_notes()
         # Before the query runs: the dropdown may drop the tag being filtered
         # on (the last note carrying it just lost it), which resets the filter.
-        self._sync_tag_filter()
+        self._sync_tag_filter(all_notes)
 
-        for row in self.list_box.get_children():
-            self.list_box.remove(row)
+        # Both are emptied, only the visible one refilled: the hidden shape
+        # holds no stale rows to flash on the next switch, and building the
+        # widgets it isn't showing would be work for nothing.
+        self._clear_note_containers()
+        self._apply_notes_view()
 
         if query:
-            self._notes = notes_mod.search_notes(query, self._tag_filter)
+            self._notes = notes_mod.search_notes(query, self._tag_filter, all_notes)
         else:
-            self._notes = notes_mod.list_notes(self._tag_filter)
+            self._notes = notes_mod.filter_by_tag(all_notes, self._tag_filter)
 
         # `None` is the All filter — the only view where the rows carry more
         # than one tag between them, so the only one where the `tag :` prefix
         # on each row says anything the dropdown isn't already saying.
         show_tag = self._tag_filter is None
-        for note in self._notes:
-            self.list_box.add(NoteRow(note, self._delete_note_by_path, show_tag=show_tag))
+        if self._notes_view == "grid":
+            self._grid_cards = [
+                NoteCard(note, self._delete_note_by_path, self._load_note_in_editor, show_tag=show_tag)
+                for note in self._notes
+            ]
+            self._layout_grid()
+        else:
+            for note in self._notes:
+                self.list_box.add(NoteRow(note, self._delete_note_by_path, show_tag=show_tag))
 
         self._set_status_count(len(self._notes))
 
-    # --- tags ---
+    def _clear_note_containers(self):
+        for child in self.list_box.get_children():
+            self.list_box.remove(child)
+        for card in self._grid_cards:
+            card.destroy()
+        self._grid_cards = []
+        for column in self.grid_box.get_children():
+            column.destroy()
+        self._grid_columns = []
 
-    def _sync_tag_filter(self):
+    def _layout_grid(self):
+        """Deal the cards into columns, each going to the shortest one so far.
+
+        Greedy shortest-column packing is what keeps the columns near enough
+        the same length without giving any card a height of its own: each is
+        measured at the width it will actually get (`get_preferred_height_for_
+        width`, the same question GTK asks when allocating it), so a card is
+        exactly as tall as its own title and preview and the one beside it is
+        free to be a different height. Called only on a change of cards, the
+        column count being fixed — a resize just makes the same columns wider.
+        """
+        width = self.grid_scroll.get_allocated_width()
+        if width <= 1:
+            # Before the first allocation — the panel may still be hidden.
+            width = geometry_mod.get_target_geometry()[2]
+
+        self._grid_columns = []
+        for _ in range(_GRID_COLS):
+            column = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            column.set_valign(Gtk.Align.START)
+            self.grid_box.pack_start(column, True, True, 0)
+            column.show()
+            self._grid_columns.append(column)
+
+        col_width = max(1, width // _GRID_COLS)
+        heights = [0] * _GRID_COLS
+        for card in self._grid_cards:
+            shortest = heights.index(min(heights))
+            self._grid_columns[shortest].pack_start(card, False, False, 0)
+            heights[shortest] += card.get_preferred_height_for_width(col_width)[1]
+
+    def _apply_notes_view(self):
+        """Point the list stack at the shape the notes are set to be shown in.
+
+        One setting for both lists: the trash is the notes list with different
+        rows in it, and a trash that stayed a list while the notes were a grid
+        would read as a different place rather than the same one.
+        """
+        self.list_stack.set_visible_child_name(
+            "list" if self._notes_view == "list" else "grid")
+
+    def _sync_view_toggle(self):
+        """The button offers the shape the list is *not* in, so its icon is
+        the other view rather than the current one."""
+        grid = self._notes_view == "grid"
+        self._view_toggle_icon.set_from_icon_name(
+            "view-list-symbolic" if grid else "view-grid-symbolic",
+            Gtk.IconSize.SMALL_TOOLBAR,
+        )
+        self.btn_view_toggle.set_tooltip_text("List view" if grid else "Grid view")
+
+    def _on_toggle_notes_view(self, btn):
+        self._notes_view = "grid" if self._notes_view == "list" else "list"
+        settings_mod.save_notes_view(self._notes_view)
+        self._sync_view_toggle()
+        if self._trash_mode:
+            self._refresh_trash()
+        else:
+            self._refresh_notes(self.search.get_text())
+
+    def _sync_tag_filter(self, notes: list | None = None):
         """Rebuild the tag dropdown, but only when the tags in use changed.
 
         _refresh_notes() runs on every save, and rebuilding the model each
-        time would close the popup mid-click and churn the selection.
+        time would close the popup mid-click and churn the selection. `notes`
+        is the list it has already read, counted here instead of read again.
         """
-        items = notes_mod.list_tags()
+        items = notes_mod.list_tags(notes)
         if items == self._tag_filter_items:
             return
         self._tag_filter_items = items
@@ -479,6 +635,10 @@ class NotesPanel(Gtk.Window):
         return self.main_stack.get_visible_child_name() == "editor"
 
     def _show_list_view(self):
+        # Where the saves made in the editor land in the list: they only
+        # marked it stale (see _do_save) rather than rebuilding it each time.
+        if self._list_dirty and not self._trash_mode:
+            self._refresh_notes(self.search.get_text())
         self.main_stack.set_visible_child_name("list")
         self.search_box.show()
         self._update_bottom_bar()
@@ -530,12 +690,20 @@ class NotesPanel(Gtk.Window):
         self._show_list_view()
 
     def _refresh_trash(self):
-        for row in self.list_box.get_children():
-            self.list_box.remove(row)
+        self._clear_note_containers()
+        self._apply_notes_view()
 
         trash_notes = notes_mod.list_trash()
-        for note in trash_notes:
-            self.list_box.add(TrashRow(note, self._restore_note, self._delete_permanently))
+        if self._notes_view == "grid":
+            self._grid_cards = [
+                TrashCard(note, self._restore_note, self._delete_permanently,
+                          self._load_note_in_editor)
+                for note in trash_notes
+            ]
+            self._layout_grid()
+        else:
+            for note in trash_notes:
+                self.list_box.add(TrashRow(note, self._restore_note, self._delete_permanently))
 
         self._set_status_count(len(trash_notes), prefix="Trash · ")
 
@@ -649,7 +817,15 @@ class NotesPanel(Gtk.Window):
         self._default_title = None
         self._current_path = notes_mod.save_note(self._current_path, title, tag, body)
         notes_mod.set_last_note_path(self._current_path)
-        self._refresh_notes(self.search.get_text())
+        # The list is behind the editor here, so rebuilding it now is work
+        # nobody can see — and this runs on every autosave, i.e. per 800ms of
+        # typing: re-reading every note off disk, rebuilding every row and, in
+        # grid mode, dealing the whole masonry again. Mark it stale instead
+        # and let the way back out rebuild it once.
+        if self._in_editor_view():
+            self._list_dirty = True
+        else:
+            self._refresh_notes(self.search.get_text())
         return False
 
     def _derive_title(self, body: str) -> str:

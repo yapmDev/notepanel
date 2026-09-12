@@ -57,9 +57,9 @@ def _title_row(note: dict, *actions: Gtk.Widget, show_tag: bool = True) -> Gtk.B
     return box
 
 
-def _preview_row(note: dict, *actions: Gtk.Widget) -> Gtk.Box:
-    """The row's second line: up to two lines of body preview, with any actions
-    passed here pinned to its right.
+def _preview_row(note: dict, *actions: Gtk.Widget, lines: int = 2) -> Gtk.Box:
+    """The row's second line: up to `lines` lines of body preview, with any
+    actions passed here pinned to its right.
 
     A note with an empty body gets no label at all (an empty one would still
     claim a line's height); actions then sit alone on this line, which keeps
@@ -74,7 +74,7 @@ def _preview_row(note: dict, *actions: Gtk.Widget) -> Gtk.Box:
         # set; without both, the label falls back to a single unbounded line.
         preview.set_line_wrap(True)
         preview.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
-        preview.set_lines(2)
+        preview.set_lines(lines)
         preview.set_ellipsize(Pango.EllipsizeMode.END)
         preview.set_valign(Gtk.Align.START)
         box.pack_start(preview, True, True, 0)
@@ -98,6 +98,63 @@ def _icon_button(icon_name: str, css_class: str) -> Gtk.Button:
     return button
 
 
+def _connect_hover(on_hover, *sources: Gtk.Widget):
+    """Call `on_hover(True)` when the pointer enters any of `sources` and
+    `on_hover(False)` once it has left all of them. Each source must be a
+    widget with a window of its own, which is the only thing crossing events
+    are delivered to.
+
+    More than one source, because a window *inside* another one is not the
+    only way GTK stacks them: an event box with no visible window of its own
+    leaves its children parented where its own window would have been, so the
+    button on a card is a sibling of the card's input-only window rather than
+    a child of it. Moving onto that button then reads as a plain leave of the
+    card and not as the INFERIOR crossing below — a reveal hung off it takes
+    the button out from under the pointer that came for it. Listening on the
+    button as well closes the hole from the other side: the pointer is inside
+    the group until every member of it has been left, whichever one it leaves
+    the group through.
+
+    Only the transitions are passed on. X sends a crossing event whenever the
+    stack of windows under the pointer changes, so "still hovering" can arrive
+    many times over, and what hangs off this is not free.
+    """
+    inside = set()
+    hovering = False
+
+    def set_hovering(now):
+        nonlocal hovering
+        if now != hovering:
+            hovering = now
+            on_hover(now)
+
+    def on_enter(widget, _event):
+        inside.add(widget)
+        set_hovering(True)
+        return False
+
+    def on_leave(widget, event):
+        # INFERIOR means the pointer only crossed into a child of this source —
+        # a button inside a real event box window — and has not actually left.
+        if event.detail != Gdk.NotifyType.INFERIOR:
+            inside.discard(widget)
+            set_hovering(bool(inside))
+        return False
+
+    for source in sources:
+        source.connect("enter-notify-event", on_enter)
+        source.connect("leave-notify-event", on_leave)
+
+
+def _hover_reveal(content: Gtk.Widget, button: Gtk.Button) -> Gtk.EventBox:
+    """Wrap `content` in the window the reveal needs: a GtkListBoxRow has none
+    of its own, so it gets no crossing events to hang the reveal off."""
+    event_box = Gtk.EventBox()
+    event_box.add(content)
+    _connect_hover(lambda hovering: button.show() if hovering else button.hide(), event_box)
+    return event_box
+
+
 class NoteRow(Gtk.ListBoxRow):
     def __init__(self, note: dict, on_delete, show_tag: bool = True):
         super().__init__()
@@ -115,15 +172,7 @@ class NoteRow(Gtk.ListBoxRow):
         row_box.pack_start(_title_row(note, self.remove_btn, show_tag=show_tag), False, False, 0)
         row_box.pack_start(_preview_row(note), False, False, 0)
 
-        # The row itself gets no enter/leave events — GtkListBoxRow has no
-        # window of its own to receive them — so the hover reveal hangs off an
-        # EventBox wrapping the content.
-        event_box = Gtk.EventBox()
-        event_box.add(row_box)
-        event_box.connect("enter-notify-event", self._on_enter)
-        event_box.connect("leave-notify-event", self._on_leave)
-
-        self.add(event_box)
+        self.add(_hover_reveal(row_box, self.remove_btn))
         self.show_all()
         # set after show_all() so the label inside keeps its visible flag;
         # no_show_all only needs to stop future show_all() calls from
@@ -131,16 +180,153 @@ class NoteRow(Gtk.ListBoxRow):
         self.remove_btn.set_no_show_all(True)
         self.remove_btn.hide()
 
-    def _on_enter(self, widget, event):
-        self.remove_btn.show()
+
+class _Card(Gtk.EventBox):
+    """What a grid card is, before it is a note's or a trashed note's.
+
+    Not a GtkFlowBoxChild, because a flow box gives every cell in a line the
+    height of the tallest one — an empty note next to a long one leaves the
+    hole the grid is meant not to have. Cards are dealt into plain column
+    boxes instead (panel._layout_grid), so the widget has to bring for itself
+    what a cell container would have given it: a window to get the pointer
+    and the click that opens the note, which a flow box would have delivered
+    as `child-activated`.
+
+    That window is all the event box is for. **It is not the card**: GtkEventBox
+    predates GTK's CSS box model and honours neither padding nor margin, so a
+    card painted on it would have its text against its own edge and its
+    neighbour against its side. The painted card is `self.card`, the GtkBox
+    inside it, which does implement the box model — which is also why anything
+    that depends on the pointer (hover, focus) has to put its styling on that
+    box by hand, the states being the event box's.
+
+    The body preview gets six lines here against the row's two: a cell is a
+    fraction of the panel's width, so a line of it holds a fraction of the
+    text, and with heights free to differ there is no cost to a long note
+    taking the room it needs.
+    """
+
+    PREVIEW_LINES = 6
+
+    def __init__(self, note: dict, on_open):
+        super().__init__()
+        self.note = note
+        self._on_open = on_open
+        self.set_visible_window(False)
+        # A list row is activated by a single click and answers Enter once
+        # focused; a card has to arrange both for itself.
+        self.set_can_focus(True)
+        self.connect("button-press-event", self._on_button_press)
+        self.connect("key-press-event", self._on_key_press)
+        self.connect("focus-in-event", self._on_focus_change, True)
+        self.connect("focus-out-event", self._on_focus_change, False)
+
+        self.card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.card.get_style_context().add_class("note-row")
+        self.card.get_style_context().add_class("note-card")
+        self.add(self.card)
+
+    def _fill(self, *actions: Gtk.Widget, show_tag: bool = True):
+        """Pack the two stacked lines, with `actions` at the end of the first."""
+        self.card.pack_start(_title_row(self.note, *actions, show_tag=show_tag), False, False, 0)
+        self.card.pack_start(_preview_row(self.note, lines=self.PREVIEW_LINES), False, False, 0)
+
+    def _on_button_press(self, _widget, event):
+        # The action chips have windows of their own and swallow their own
+        # presses, so a click that reaches here is a click on the card.
+        if event.type == Gdk.EventType.BUTTON_PRESS and event.button == 1:
+            self._on_open(self.note)
+            return True
         return False
 
-    def _on_leave(self, widget, event):
-        # INFERIOR means the pointer only crossed into a child of the row —
-        # the button itself, most of the time — and has not actually left.
-        if event.detail != Gdk.NotifyType.INFERIOR:
-            self.remove_btn.hide()
+    def _on_key_press(self, _widget, event):
+        if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_space):
+            self._on_open(self.note)
+            return True
         return False
+
+    def _on_focus_change(self, _widget, _event, focused):
+        context = self.card.get_style_context()
+        if focused:
+            context.add_class("focused")
+        else:
+            context.remove_class("focused")
+        return False
+
+
+class NoteCard(_Card):
+    """NoteRow's grid counterpart: the same note, as a card only as tall as
+    its own text, with the same remove revealed by the pointer.
+
+    Remove is an icon here rather than the row's "Remove" label: it shares the
+    title line with a title that has half the width to be read in.
+    """
+
+    def __init__(self, note: dict, on_delete, on_open, show_tag: bool = True):
+        super().__init__(note, on_open)
+        self._on_delete = on_delete
+
+        self.remove_btn = _icon_button("edit-delete-symbolic", "row-remove-btn")
+        self.remove_btn.set_tooltip_text("Remove")
+        self.remove_btn.connect("clicked", self._on_remove_clicked)
+
+        self._fill(self.remove_btn, show_tag=show_tag)
+        _connect_hover(self._set_hovering, self, self.remove_btn)
+        self.show_all()
+        # The chip keeps its place whether it is up or not, and only its paint
+        # comes and goes. Showing and hiding it would re-request the card's
+        # size, and in a grid that means re-measuring a whole column of
+        # wrapped previews — 26ms of it, on every crossing, i.e. a stall for
+        # every card the pointer sweeps over. Opacity costs nothing but the
+        # pixels — and not set_sensitive() either, whose state change
+        # invalidates the style and so costs exactly as much as the show() did.
+        self._set_hovering(False)
+
+    def _on_remove_clicked(self, _button):
+        # The chip holds its place while transparent, so a click can only land
+        # on it with the pointer over the card — which is when it is up. This
+        # covers the gap: the press that arrives between leaving and repainting.
+        if self.remove_btn.get_opacity():
+            self._on_delete(self.note["path"])
+
+    def _set_hovering(self, hovering: bool):
+        self.remove_btn.set_opacity(1 if hovering else 0)
+        # The pointer is over the event box, not the painted card inside it,
+        # so that card never reaches `:hover` on its own. `.hover` is the same
+        # paint as a class, and a colour change is a redraw, not a resize.
+        context = self.card.get_style_context()
+        if hovering:
+            context.add_class("hover")
+        else:
+            context.remove_class("hover")
+
+
+class TrashCard(_Card):
+    """TrashRow's grid counterpart, and NoteCard's trashed one.
+
+    No hover to it: its two actions are permanent, the way they are in the
+    trash row, a trashed note being nothing but those two decisions. That also
+    makes it the cheap card — with nothing appearing on hover, nothing ever
+    re-requests its size.
+
+    The tag prefix always shows, as it does in the trash row: the trash has no
+    filter of its own, so there is no dropdown already saying what it says.
+    """
+
+    def __init__(self, note: dict, on_restore, on_delete_permanent, on_open):
+        super().__init__(note, on_open)
+
+        btn_restore = Gtk.Button(label="\u21a9")
+        btn_restore.get_style_context().add_class("row-restore-btn")
+        btn_restore.set_tooltip_text("Restore")
+        btn_restore.connect("clicked", lambda _: on_restore(note["path"]))
+
+        btn_del = _icon_button("edit-delete-symbolic", "row-delete-btn")
+        btn_del.set_tooltip_text("Delete permanently")
+        btn_del.connect("clicked", lambda _: on_delete_permanent(note["path"]))
+
+        self._fill(btn_restore, btn_del)
+        self.show_all()
 
 
 class TrashRow(Gtk.ListBoxRow):
