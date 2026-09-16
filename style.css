@@ -1,69 +1,29 @@
 /* ============================================================
-   Typography. The app has no font of its own: both the family
-   and the base size come from the GTK theme — i.e. whatever the
-   user picked as GNOME's interface font — so nothing below sets
-   a font-family, and no size is written in px.
+   notepanel's layout, on top of the design system in base.css.
 
-   Sizes are relative to that base, and there are only three:
+   base.css holds every colour, the type scale and every component;
+   widgets pick those up through their `ds-` classes, set in Python.
+   What is left here is only what belongs to this app's layout:
+   padding, margins and widths, plus the one colour role (the editor's
+   tag field) that has no meaning outside it. A rule that describes a
+   kind of component rather than one spot in this layout belongs in
+   base.css instead.
 
-     1.15em   title     the note's title, a dialog's title
-     1em      body      anything the user reads or types; never
-                        declared, it is simply the theme's size
-     0.85em   caption   metadata *about* the body — note previews,
-                        the editor's tag field, match counts, hints
-
-   `em` resolves against the parent node, so it multiplies down
-   the tree: declare a size on the outermost node of a widget
-   only, and never restate it on a child that already inherits
-   the right one.
+   Sizes still come from base.css's closed set (spacing 2 4 8 12 16 20).
    ============================================================ */
+
+@import url("base.css");
 
 #panel-root {
-    background-color: @theme_bg_color;
-    border-left: 1px solid @borders;
+    background-color: @ds_window_bg;
+    border-left: 1px solid @ds_border;
 }
+
+
+/* ---- list view ---------------------------------------------- */
 
 #toolbar {
-    background-color: @theme_bg_color;
-    padding: 10px 12px 4px 12px;
-}
-
-/* ============================================================
-   Shared control sizing — the one place to resize every text
-   field and action control in the app. Height reference: the
-   Trash button (#btn-action). Icon-only actions also share a
-   fixed width here; text-label buttons size to their own label.
-   ============================================================ */
-#btn-action,
-#btn-new,
-#btn-back,
-#btn-empty-trash,
-#search-entry,
-#find-entry {
-    min-height: 30px;
-}
-
-#btn-action {
-    min-width: 30px;
-}
-
-/* Every action the bottom bar can mount shares one surface. Which
-   buttons are present changes per destination (_update_bottom_bar),
-   so the surface is defined once here rather than per button —
-   otherwise the same bar reads as a different control strip in the
-   list, the editor and the trash. Matches #tag-filter/#search-entry.
-   background-image is killed explicitly: themes paint the button
-   gradient there, and it covers any background-color set below. */
-#btn-action,
-#btn-new,
-#btn-back,
-#btn-empty-trash {
-    background-image: none;
-    background-color: @theme_base_color;
-    border: 1px solid @borders;
-    border-radius: 8px;
-    box-shadow: none;
-    text-shadow: none;
+    padding: 12px 12px 4px 12px;
 }
 
 #search-entry,
@@ -71,50 +31,13 @@
     min-width: 200px;
 }
 
-#search-entry {
-    background-color: @theme_base_color;
-    color: @theme_text_color;
-    border: 1px solid @borders;
-    border-radius: 8px;
-    padding: 0 12px;
-    caret-color: @theme_selected_bg_color;
-}
-
-#search-entry:focus {
-    border-color: @theme_selected_bg_color;
-}
-
-/* The grid is a plain box, not a scrollable widget of its own, so the
-   scrolled window wraps it in a viewport — which paints the theme's base
-   colour over the panel's own ground unless it's told not to. */
-#note-list,
-#note-grid,
-#note-grid-scroll,
-#note-grid-scroll viewport {
-    background-color: transparent;
+#status-label {
+    padding: 0 4px 0 8px;
 }
 
 .note-row {
-    background-color: shade(@theme_bg_color, 0.85);
-    border-radius: 8px;
-    padding: 10px 14px;
-    margin: 3px 8px;
-    border: 1px solid transparent;
-}
-
-/* `.hover` is the class form of the same paint, for the grid card: the
-   pointer enters the event box around it, not the painted box itself, so
-   that box never reaches the :hover state on its own. */
-.note-row:hover,
-.note-row.hover {
-    background-color: shade(@theme_bg_color, 0.95);
-    border-color: @unfocused_borders;
-}
-
-.note-row:selected,
-.note-row.selected {
-    background-color: shade(@theme_bg_color, 0.95);
-    border-color: @theme_selected_bg_color;
+    padding: 12px 16px;
+    margin: 4px 8px;
 }
 
 /* A card is the same painted surface as a row, only narrower: the margin
@@ -124,18 +47,8 @@
    card's height comes from — nothing here sets one, so a card is as tall as
    the text inside it and no taller. */
 .note-card {
-    padding: 8px 10px;
-    margin: 3px 4px;
-}
-
-/* A focused card (it answers Enter like a list row does) shows it the way a
-   selected row does — an accent border, not the theme's dashed focus ring
-   drawn square across the card's rounded corners. Class rather than :focus
-   for the same reason as .hover: the focus belongs to the event box. */
-.note-card.focused {
-    outline: none;
-    background-color: shade(@theme_bg_color, 0.95);
-    border-color: @theme_selected_bg_color;
+    padding: 8px 12px;
+    margin: 4px;
 }
 
 /* The cards carry the gap between the columns in their own side margins;
@@ -145,384 +58,59 @@
     margin: 0 4px;
 }
 
-.note-title {
-    color: @theme_fg_color;
-    font-weight: bold;
-}
 
-.note-preview {
-    color: mix(@theme_fg_color, @theme_bg_color, 0.5);
-    font-size: 0.85em;
-}
+/* ---- editor ------------------------------------------------- */
 
-/* Leads the title line as a `tag :` prefix. Plain text rather than a pill:
-   a filled badge in the first position of every row would out-shout the
-   title, which is the thing being scanned for. No font-size: the prefix
-   reads as part of the title line, so it takes the title's own size and
-   weight and separates from it by colour alone. */
-.note-tag {
-    color: @theme_selected_bg_color;
-    font-weight: bold;
-}
-
-/* The row's only action, revealed on hover at the far end of the title line.
-   A label, not an icon button, and deliberately frameless — a bordered
-   control there would read as part of the note's own content. The theme
-   paints a button's face with a background-image gradient and its frame with
-   an inset box-shadow, so neither goes away by setting background-color and
-   border alone. */
-.row-remove-btn {
-    background-image: none;
-    background-color: transparent;
-    border: none;
-    box-shadow: none;
-    text-shadow: none;
-    outline-style: none;
-    padding: 0 2px;
-    min-height: 0;
-    min-width: 0;
-    font-weight: bold;
-    color: @error_color;
-}
-
-/* It is already red at rest, so hover can only deepen it — the cue that the
-   pointer is on the action, not the cue that the action is destructive. */
-.row-remove-btn:hover {
-    color: shade(@error_color, 0.8);
-}
-
-/* The combo's own background lives on its inner button node, not on
-   #tag-filter itself — styling the combobox alone leaves the theme's
-   default (light, gradient) button painted on top of it. */
-#tag-filter {
-    min-height: 30px;
-    font-size: 0.85em;
-}
-
-#tag-filter button,
-#tag-filter button.combo {
-    background-image: none;
-    background-color: @theme_base_color;
-    color: @theme_text_color;
-    border: 1px solid @borders;
-    border-radius: 8px;
-    padding: 0 8px;
-    min-height: 30px;
-    box-shadow: none;
-    text-shadow: none;
-}
-
-#tag-filter button:hover,
-#tag-filter button:checked,
-#tag-filter button:active {
-    background-image: none;
-    background-color: shade(@theme_bg_color, 0.95);
-    border-color: @theme_selected_bg_color;
-}
-
-#tag-filter arrow {
-    color: mix(@theme_fg_color, @theme_bg_color, 0.4);
-}
-
-/* ============================================================
-   Tag dropdown popups. A combo's popup is a toplevel, not a
-   child of the combo, so it never inherits the panel's colors
-   and lands on the theme's default (light) menu background.
-   The two combos also popup differently: #tag-filter is a plain
-   ComboBoxText (a GtkMenu), while #meta-tag has an entry, which
-   forces list mode (a popup window wrapping a treeview) — hence
-   both sets of selectors. The provider is screen-global, so
-   these also cover the tray menu, which is the look we want.
-   ============================================================ */
-/* Exactly one node draws the frame. A popup is three nested nodes —
-   window.popup > decoration > menu (or > scrolledwindow in list
-   mode) — so a border on more than one stacks into the visible
-   double outline. The outer two are flattened here and the frame
-   lives on the innermost node, which is also the one that has to
-   carry the background: the theme paints decoration's own light
-   border/shadow otherwise. */
-window.popup,
-window.popup.background,
-window.popup decoration {
-    background-color: transparent;
-    border: none;
-    box-shadow: none;
-    padding: 0;
-}
-
-menu,
-menu.background,
-window.popup scrolledwindow {
-    background-color: shade(@theme_bg_color, 0.85);
-    border: 1px solid @borders;
-    border-radius: 8px;
-    padding: 2px 0;
-}
-
-menu menuitem,
-window.popup treeview.view,
-window.popup treeview.view cell {
-    background-color: transparent;
-    color: @theme_fg_color;
-    padding: 4px 10px;
-}
-
-/* Caption, but declared on the popup's own node only — `cell` is a child of
-   treeview.view and inherits it; setting it on both would multiply. */
-menu menuitem,
-window.popup treeview.view {
-    font-size: 0.85em;
-}
-
-menu menuitem:hover,
-window.popup treeview.view:hover,
-window.popup treeview.view:selected {
-    background-color: @theme_selected_bg_color;
-    color: @theme_selected_fg_color;
-}
-
-menu separator,
-window.popup separator {
-    background-color: @borders;
-}
-
-window.popup viewport {
-    background-color: transparent;
-    border: none;
-}
-
-/* ============================================================
-   Editor meta row — the note's title and tag. They're stored on
-   the file's first line but never shown inside the buffer, so
-   this row is the only place they can be read or edited.
-   ============================================================ */
+/* The note's title and tag. They're stored on the file's first line but
+   never shown inside the buffer, so this row is the only place they can be
+   read or edited. Same horizontal inset as the text below, so the title
+   lines up with the body. */
 #meta-row {
-    background-color: @theme_base_color;
-    padding: 10px 14px 2px 14px;
+    padding: 12px 16px 4px 16px;
 }
 
-#meta-title,
-#meta-tag entry {
-    background-color: transparent;
-    color: @theme_text_color;
-    border: none;
-    border-bottom: 1px solid transparent;
-    border-radius: 0;
-    padding: 2px 0;
-    caret-color: @theme_selected_bg_color;
-}
-
-#meta-title {
-    font-size: 1.15em;
-    font-weight: bold;
-    /* The theme draws an entry's focus frame as an inset box-shadow plus an
-       outline, neither of which `border: none` above touches — the title is
-       meant to read as text in the note, not as a form field. */
-    box-shadow: none;
-    outline-style: none;
-}
-
-/* Neither half of the tag combo is meant to look like a form field: no
-   frame on the entry, and the arrow bare instead of sitting in the theme's
-   grey button. `background-color`/`border` alone don't get there — the theme
-   paints a button's face with a background-image gradient and its frame with
-   an inset box-shadow, and repaints both on hover and while the popup holds
-   the button :active/:checked. */
-#meta-tag {
-    color: @theme_selected_bg_color;
-}
-
-#meta-tag entry {
-    font-size: 0.85em;
-    color: @theme_selected_bg_color;
-    box-shadow: none;
-    outline-style: none;
-}
-
+/* The tag takes the same accent it has as a prefix in the notes list, on
+   every part of the combo — the arrow included, in every state. */
+#meta-tag,
+#meta-tag entry,
 #meta-tag button,
 #meta-tag button:hover,
 #meta-tag button:focus,
 #meta-tag button:active,
 #meta-tag button:checked {
-    background-color: transparent;
-    background-image: none;
-    border: none;
-    box-shadow: none;
-    outline-style: none;
-    padding: 0 2px;
-    min-height: 0;
-    min-width: 16px;
-    color: @theme_selected_bg_color;
-}
-
-#editor-box {
-    background-color: @theme_base_color;
-}
-
-#btn-action {
-    color: mix(@theme_fg_color, @theme_bg_color, 0.4);
-    padding: 0 10px;
-    font-size: 0.85em;
-}
-
-#btn-action:hover {
-    background-color: @theme_selected_bg_color;
-    color: @theme_selected_fg_color;
-    border-color: @theme_selected_bg_color;
-}
-
-#find-bar {
-    padding: 6px 8px;
-    border-top: 1px solid @borders;
-    background-color: @theme_bg_color;
-}
-
-#find-entry {
-    background-color: @theme_base_color;
-    color: @theme_text_color;
-    border: 1px solid @borders;
-    border-radius: 6px;
-    padding: 0 8px;
-}
-
-#find-entry:focus {
-    border-color: @theme_selected_bg_color;
-}
-
-#find-count {
-    color: mix(@theme_fg_color, @theme_bg_color, 0.5);
-    font-size: 0.85em;
-    padding: 0 4px;
-}
-
-#editor-box scrolledwindow,
-#editor-box scrolledwindow viewport {
-    background-color: transparent;
-}
-
-#editor-text,
-#editor-text text {
-    background-color: transparent;
-    color: @theme_text_color;
+    color: @ds_accent;
 }
 
 #editor-text {
-    border: none;
-    padding: 12px 14px;
-    caret-color: @theme_selected_bg_color;
+    padding: 12px 16px;
 }
 
-/* New note and Empty trash keep their accent/destructive colour on
-   the label instead of the fill — the shared surface takes the
-   background, but a primary and a destructive action still must not
-   read as plain neutral buttons. */
-#btn-new {
-    color: @theme_selected_bg_color;
-    padding: 0 20px;
-    font-weight: bold;
+#find-bar {
+    padding: 8px;
 }
 
-#btn-new:hover {
-    background-color: @theme_selected_bg_color;
-    color: @theme_selected_fg_color;
-    border-color: @theme_selected_bg_color;
+#find-count {
+    padding: 0 4px;
 }
 
-.row-delete-btn,
-.row-restore-btn {
-    min-width: 22px;
-    min-height: 22px;
-}
 
-.row-delete-btn {
-    background-color: transparent;
-    color: mix(@theme_fg_color, @theme_bg_color, 0.6);
-    border: 1px solid @borders;
-    border-radius: 6px;
-    padding: 0;
-    font-size: 0.85em;
-}
-
-.row-delete-btn:hover {
-    background-color: @error_color;
-    color: @theme_selected_fg_color;
-}
+/* ---- bottom bar --------------------------------------------- */
 
 #bottom-bar {
-    background-color: @theme_bg_color;
     padding: 8px 12px 12px 12px;
-    border-top: 1px solid @borders;
 }
 
 #bar-separator {
-    background-color: @borders;
-    min-width: 1px;
-    margin: 3px 2px;
+    margin: 4px 2px;
 }
 
-#btn-back {
-    color: @theme_fg_color;
-    padding: 0 14px;
+#btn-new {
+    padding: 0 20px;
 }
 
-#btn-back:hover {
-    background-color: shade(@theme_bg_color, 0.95);
-    border-color: @theme_selected_bg_color;
-}
 
-#btn-empty-trash {
-    color: @error_color;
-    padding: 0 14px;
-    font-weight: bold;
-}
-
-#btn-empty-trash:hover {
-    background-color: @error_color;
-    color: @theme_selected_fg_color;
-    border-color: @error_color;
-}
-
-.row-restore-btn {
-    background-color: transparent;
-    color: mix(@theme_fg_color, @theme_bg_color, 0.6);
-    border: 1px solid @borders;
-    border-radius: 6px;
-    padding: 0;
-    font-size: 0.85em;
-}
-
-.row-restore-btn:hover {
-    background-color: @theme_selected_bg_color;
-    color: @theme_selected_fg_color;
-}
-
-#status-label {
-    color: mix(@theme_fg_color, @theme_bg_color, 0.5);
-    font-size: 0.85em;
-    padding: 0 2px 0 8px;
-}
-
-#settings-dialog {
-    background-color: @theme_bg_color;
-    border: 1px solid @borders;
-    border-radius: 10px;
-}
+/* ---- settings dialog ---------------------------------------- */
 
 #settings-body {
-    padding: 16px 18px;
-}
-
-#settings-title {
-    color: @theme_fg_color;
-    font-size: 1.15em;
-    font-weight: bold;
-}
-
-#settings-label {
-    color: mix(@theme_fg_color, @theme_bg_color, 0.4);
-}
-
-#settings-hint {
-    color: mix(@theme_fg_color, @theme_bg_color, 0.55);
-    font-size: 0.85em;
+    padding: 16px;
 }

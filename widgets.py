@@ -4,6 +4,16 @@ gi.require_version("Gdk", "3.0")
 from gi.repository import Gtk, Gdk, Pango
 import settings as settings_mod
 
+def add_classes(widget: Gtk.Widget, *classes: str) -> Gtk.Widget:
+    """Put style classes on `widget` and hand it back, so a widget can be built
+    and styled in one expression. The classes are base.css's `ds-` components;
+    a widget keeps set_name() only for a layout rule of this app's own."""
+    context = widget.get_style_context()
+    for css_class in classes:
+        context.add_class(css_class)
+    return widget
+
+
 CORNER_LABELS = {
     "top-right": "Top right",
     "top-left": "Top left",
@@ -36,14 +46,14 @@ def _title_row(note: dict, *actions: Gtk.Widget, show_tag: bool = True) -> Gtk.B
         # The colon rides on the tag's own label rather than a separator widget
         # of its own — it belongs to the prefix and takes the prefix's colour.
         tag = Gtk.Label(label=f"{note['tag']} :", xalign=0)
-        tag.get_style_context().add_class("note-tag")
+        add_classes(tag, "ds-text-accent", "ds-strong")
         tag.set_valign(Gtk.Align.BASELINE)
         tag.set_ellipsize(Pango.EllipsizeMode.END)
         tag.set_max_width_chars(14)
         box.pack_start(tag, False, False, 0)
 
     title = Gtk.Label(label=note["title"], xalign=0)
-    title.get_style_context().add_class("note-title")
+    add_classes(title, "ds-strong")
     title.set_valign(Gtk.Align.BASELINE)
     title.set_ellipsize(Pango.EllipsizeMode.END)
     box.pack_start(title, True, True, 0)
@@ -69,7 +79,7 @@ def _preview_row(note: dict, *actions: Gtk.Widget, lines: int = 2) -> Gtk.Box:
 
     if note["preview"]:
         preview = Gtk.Label(label=note["preview"], xalign=0)
-        preview.get_style_context().add_class("note-preview")
+        add_classes(preview, "ds-caption", "ds-text-muted")
         # set_lines() only takes effect with wrapping on and an ellipsize mode
         # set; without both, the label falls back to a single unbounded line.
         preview.set_line_wrap(True)
@@ -86,7 +96,7 @@ def _preview_row(note: dict, *actions: Gtk.Widget, lines: int = 2) -> Gtk.Box:
     return box
 
 
-def _icon_button(icon_name: str, css_class: str) -> Gtk.Button:
+def _icon_button(icon_name: str, *classes: str) -> Gtk.Button:
     icon_box = Gtk.Box()
     icon_box.pack_start(
         Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.SMALL_TOOLBAR),
@@ -94,8 +104,7 @@ def _icon_button(icon_name: str, css_class: str) -> Gtk.Button:
     )
     button = Gtk.Button()
     button.add(icon_box)
-    button.get_style_context().add_class(css_class)
-    return button
+    return add_classes(button, *classes)
 
 
 def _connect_hover(on_hover, *sources: Gtk.Widget):
@@ -159,14 +168,17 @@ class NoteRow(Gtk.ListBoxRow):
     def __init__(self, note: dict, on_delete, show_tag: bool = True):
         super().__init__()
         self.note = note
-        self.get_style_context().add_class("note-row")
+        add_classes(self, "ds-card", "note-row")
 
         row_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         row_box.set_margin_top(2)
         row_box.set_margin_bottom(2)
 
-        self.remove_btn = Gtk.Button(label="Remove")
-        self.remove_btn.get_style_context().add_class("row-remove-btn")
+        # A frameless label, not a chip: a bordered control on the title line
+        # would read as part of the note's own content.
+        self.remove_btn = add_classes(
+            Gtk.Button(label="Remove"), "ds-button-bare", "ds-text-destructive", "ds-strong"
+        )
         self.remove_btn.connect("clicked", lambda _: on_delete(note["path"]))
 
         row_box.pack_start(_title_row(note, self.remove_btn, show_tag=show_tag), False, False, 0)
@@ -222,8 +234,7 @@ class _Card(Gtk.EventBox):
         self.connect("focus-out-event", self._on_focus_change, False)
 
         self.card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        self.card.get_style_context().add_class("note-row")
-        self.card.get_style_context().add_class("note-card")
+        add_classes(self.card, "ds-card", "note-card")
         self.add(self.card)
 
     def _fill(self, *actions: Gtk.Widget, show_tag: bool = True):
@@ -266,7 +277,9 @@ class NoteCard(_Card):
         super().__init__(note, on_open)
         self._on_delete = on_delete
 
-        self.remove_btn = _icon_button("edit-delete-symbolic", "row-remove-btn")
+        self.remove_btn = _icon_button(
+            "edit-delete-symbolic", "ds-button-bare", "ds-text-destructive", "ds-strong"
+        )
         self.remove_btn.set_tooltip_text("Remove")
         self.remove_btn.connect("clicked", self._on_remove_clicked)
 
@@ -317,11 +330,11 @@ class TrashCard(_Card):
         super().__init__(note, on_open)
 
         btn_restore = Gtk.Button(label="\u21a9")
-        btn_restore.get_style_context().add_class("row-restore-btn")
+        add_classes(btn_restore, "ds-chip")
         btn_restore.set_tooltip_text("Restore")
         btn_restore.connect("clicked", lambda _: on_restore(note["path"]))
 
-        btn_del = _icon_button("edit-delete-symbolic", "row-delete-btn")
+        btn_del = _icon_button("edit-delete-symbolic", "ds-chip", "ds-chip-destructive")
         btn_del.set_tooltip_text("Delete permanently")
         btn_del.connect("clicked", lambda _: on_delete_permanent(note["path"]))
 
@@ -333,18 +346,18 @@ class TrashRow(Gtk.ListBoxRow):
     def __init__(self, note: dict, on_restore, on_delete_permanent):
         super().__init__()
         self.note = note
-        self.get_style_context().add_class("note-row")
+        add_classes(self, "ds-card", "note-row")
 
         row_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         row_box.set_margin_top(2)
         row_box.set_margin_bottom(2)
 
         btn_restore = Gtk.Button(label="\u21a9")
-        btn_restore.get_style_context().add_class("row-restore-btn")
+        add_classes(btn_restore, "ds-chip")
         btn_restore.set_tooltip_text("Restore")
         btn_restore.connect("clicked", lambda _: on_restore(note["path"]))
 
-        btn_del = _icon_button("edit-delete-symbolic", "row-delete-btn")
+        btn_del = _icon_button("edit-delete-symbolic", "ds-chip", "ds-chip-destructive")
         btn_del.set_tooltip_text("Delete permanently")
         btn_del.connect("clicked", lambda _: on_delete_permanent(note["path"]))
 
@@ -367,7 +380,7 @@ class SettingsDialog(Gtk.Window):
         self.set_skip_pager_hint(True)
         self.set_type_hint(Gdk.WindowTypeHint.DIALOG)
         self.set_position(Gtk.WindowPosition.CENTER)
-        self.set_name("settings-dialog")
+        add_classes(self, "ds-dialog")
 
         self._prefs = settings_mod.load_settings()
         self._build_ui()
@@ -378,11 +391,11 @@ class SettingsDialog(Gtk.Window):
         root.set_name("settings-body")
 
         title = Gtk.Label(label="Panel settings", xalign=0)
-        title.set_name("settings-title")
+        add_classes(title, "ds-title")
         root.pack_start(title, False, False, 0)
 
         corner_label = Gtk.Label(label="Corner", xalign=0)
-        corner_label.set_name("settings-label")
+        add_classes(corner_label, "ds-text-secondary")
         self.corner_combo = Gtk.ComboBoxText()
         for corner_id in settings_mod.CORNERS:
             self.corner_combo.append(corner_id, CORNER_LABELS[corner_id])
@@ -390,19 +403,19 @@ class SettingsDialog(Gtk.Window):
         self.corner_combo.connect("changed", self._on_corner_changed)
 
         width_label = Gtk.Label(label="Width (%)", xalign=0)
-        width_label.set_name("settings-label")
+        add_classes(width_label, "ds-text-secondary")
         self.width_spin = Gtk.SpinButton.new_with_range(1, 100, 1)
         self.width_spin.set_value(self._prefs["width_percent"])
         self._wire_spin(self.width_spin, "width_percent")
 
         height_label = Gtk.Label(label="Height (%)", xalign=0)
-        height_label.set_name("settings-label")
+        add_classes(height_label, "ds-text-secondary")
         self.height_spin = Gtk.SpinButton.new_with_range(1, 100, 1)
         self.height_spin.set_value(self._prefs["height_percent"])
         self._wire_spin(self.height_spin, "height_percent")
 
         remember_label = Gtk.Label(label="Reopen last note (min)", xalign=0)
-        remember_label.set_name("settings-label")
+        add_classes(remember_label, "ds-text-secondary")
         self.remember_spin = Gtk.SpinButton.new_with_range(
             0, settings_mod.MAX_REMEMBER_NOTE_MINUTES, 1
         )
@@ -414,7 +427,7 @@ class SettingsDialog(Gtk.Window):
                   "used within this window. 0 always opens the notes list.",
             xalign=0,
         )
-        remember_hint.set_name("settings-hint")
+        add_classes(remember_hint, "ds-caption", "ds-text-muted")
 
         grid = Gtk.Grid(row_spacing=8, column_spacing=12)
         grid.attach(corner_label, 0, 0, 1, 1)
@@ -434,7 +447,7 @@ class SettingsDialog(Gtk.Window):
         root.pack_start(self.hide_on_focus_out_check, False, False, 0)
 
         btn_reset_geometry = Gtk.Button(label="Reset position and size to default")
-        btn_reset_geometry.set_name("btn-back")
+        add_classes(btn_reset_geometry, "ds-button")
         btn_reset_geometry.connect("clicked", self._on_reset_geometry)
         root.pack_start(btn_reset_geometry, False, False, 0)
 

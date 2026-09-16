@@ -11,7 +11,7 @@ import preview as preview_mod
 import geometry as geometry_mod
 import settings as settings_mod
 from undo import UndoStack
-from widgets import NoteRow, NoteCard, TrashRow, TrashCard, SettingsDialog
+from widgets import NoteRow, NoteCard, TrashRow, TrashCard, SettingsDialog, add_classes
 
 # Ids for the two tag-filter entries that aren't tags themselves. Uppercase is
 # what keeps them from colliding with a real tag: notes.normalize_tag()
@@ -87,6 +87,8 @@ class NotesPanel(Gtk.Window):
         self.connect("focus-in-event", self._on_focus_in)
 
     def _load_css(self):
+        # style.css @imports base.css, the design system, so one provider
+        # carries both in a fixed cascade order.
         css_path = Path(__file__).parent / "style.css"
         provider = Gtk.CssProvider()
         provider.load_from_path(str(css_path))
@@ -105,10 +107,12 @@ class NotesPanel(Gtk.Window):
         # show_all() on every toggle can't override the current view's state.
         search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         search_box.set_name("toolbar")
+        add_classes(search_box, "ds-bar")
         search_box.set_no_show_all(True)
         self.search_box = search_box
         self.search = Gtk.SearchEntry()
         self.search.set_name("search-entry")
+        add_classes(self.search, "ds-entry")
         self.search.set_placeholder_text("Search notes...")
         self.search.set_halign(Gtk.Align.FILL)
         self.search.connect("search-changed", self._on_search)
@@ -117,7 +121,7 @@ class NotesPanel(Gtk.Window):
         # Sits in the search row, left of the (centered) entry. Rebuilt from
         # the tags actually in use — see _sync_tag_filter().
         self.tag_filter = Gtk.ComboBoxText()
-        self.tag_filter.set_name("tag-filter")
+        add_classes(self.tag_filter, "ds-combo", "ds-caption")
         self.tag_filter.set_tooltip_text("Filter by tag")
         self.tag_filter.set_valign(Gtk.Align.CENTER)
         self.tag_filter.connect("changed", self._on_tag_filter_changed)
@@ -130,7 +134,7 @@ class NotesPanel(Gtk.Window):
         # exactly where the toggle has nothing to shape — and it stays live in
         # the trash, where the search and the filter beside it go insensitive.
         self.btn_view_toggle = Gtk.Button()
-        self.btn_view_toggle.set_name("btn-action")
+        add_classes(self.btn_view_toggle, "ds-button", "ds-button-icon")
         self.btn_view_toggle.set_valign(Gtk.Align.CENTER)
         # One image swapped in place rather than a fresh one per toggle: an
         # image set on a button later has to be shown again itself, and the
@@ -153,6 +157,7 @@ class NotesPanel(Gtk.Window):
         # while hidden it claims none of that space either.
         self.status_label = Gtk.Label(label="", xalign=0.5)
         self.status_label.set_name("status-label")
+        add_classes(self.status_label, "ds-caption", "ds-text-muted")
         self.status_label.set_no_show_all(True)
         search_box.pack_end(self.status_label, True, True, 0)
 
@@ -161,13 +166,13 @@ class NotesPanel(Gtk.Window):
         list_scroll.set_vexpand(True)
 
         self.list_box = Gtk.ListBox()
-        self.list_box.set_name("note-list")
+        add_classes(self.list_box, "ds-transparent")
         self.list_box.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.list_box.connect("row-activated", self._on_row_activated)
         list_scroll.add(self.list_box)
 
         grid_scroll = Gtk.ScrolledWindow()
-        grid_scroll.set_name("note-grid-scroll")
+        add_classes(grid_scroll, "ds-transparent")
         grid_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         grid_scroll.set_vexpand(True)
         # The width each card is measured against when the cards are dealt.
@@ -180,6 +185,7 @@ class NotesPanel(Gtk.Window):
         # far (_layout_grid), which is the whole of the masonry.
         self.grid_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.grid_box.set_name("note-grid")
+        add_classes(self.grid_box, "ds-transparent")
         self.grid_box.set_homogeneous(True)
         self.grid_box.set_valign(Gtk.Align.START)
         grid_scroll.add(self.grid_box)
@@ -193,37 +199,39 @@ class NotesPanel(Gtk.Window):
         self.list_stack.add_named(grid_scroll, "grid")
 
         editor_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        editor_box.set_name("editor-box")
+        add_classes(editor_box, "ds-view")
         editor_box.set_vexpand(True)
 
         # The editor's own actions live in the shared bottom bar (built below),
         # next to the same "← Back" button the trash uses.
         self.btn_copy = Gtk.Button.new_from_icon_name("edit-copy-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        self.btn_copy.set_name("btn-action")
+        add_classes(self.btn_copy, "ds-button", "ds-button-icon")
         self.btn_copy.set_tooltip_text("Copy")
         self.btn_copy.connect("clicked", self._on_copy)
 
         self.btn_select_all = Gtk.Button.new_from_icon_name("edit-select-all-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        self.btn_select_all.set_name("btn-action")
+        add_classes(self.btn_select_all, "ds-button", "ds-button-icon")
         self.btn_select_all.set_tooltip_text("Select all")
         self.btn_select_all.connect("clicked", self._on_select_all)
 
         self.btn_find = Gtk.Button.new_from_icon_name("edit-find-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        self.btn_find.set_name("btn-action")
+        add_classes(self.btn_find, "ds-button", "ds-button-icon")
         self.btn_find.set_tooltip_text("Find in note")
         self.btn_find.connect("clicked", self._on_toggle_find)
 
         self._preview_mode = False
         self.btn_preview = Gtk.Button.new_from_icon_name("view-reveal-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        self.btn_preview.set_name("btn-action")
+        add_classes(self.btn_preview, "ds-button", "ds-button-icon")
         self.btn_preview.set_tooltip_text("Preview")
         self.btn_preview.connect("clicked", self._on_toggle_preview)
 
         find_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
         find_bar.set_name("find-bar")
+        add_classes(find_bar, "ds-bar", "ds-divider-top")
 
         self.find_entry = Gtk.SearchEntry()
         self.find_entry.set_name("find-entry")
+        add_classes(self.find_entry, "ds-entry")
         self.find_entry.set_placeholder_text("Find in note...")
         self.find_entry.set_hexpand(True)
         self.find_entry.connect("search-changed", self._on_find_changed)
@@ -232,19 +240,20 @@ class NotesPanel(Gtk.Window):
 
         self.find_count_label = Gtk.Label(label="", xalign=0)
         self.find_count_label.set_name("find-count")
+        add_classes(self.find_count_label, "ds-caption", "ds-text-muted")
 
         btn_find_prev = Gtk.Button.new_from_icon_name("go-up-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        btn_find_prev.set_name("btn-action")
+        add_classes(btn_find_prev, "ds-button", "ds-button-icon")
         btn_find_prev.set_tooltip_text("Previous match")
         btn_find_prev.connect("clicked", self._on_find_prev)
 
         btn_find_next = Gtk.Button.new_from_icon_name("go-down-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        btn_find_next.set_name("btn-action")
+        add_classes(btn_find_next, "ds-button", "ds-button-icon")
         btn_find_next.set_tooltip_text("Next match")
         btn_find_next.connect("clicked", self._on_find_next)
 
         btn_find_close = Gtk.Button.new_from_icon_name("window-close-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        btn_find_close.set_name("btn-action")
+        add_classes(btn_find_close, "ds-button", "ds-button-icon")
         btn_find_close.set_tooltip_text("Close")
         btn_find_close.connect("clicked", self._on_toggle_find)
 
@@ -270,20 +279,25 @@ class NotesPanel(Gtk.Window):
         self.editor_stack.set_vexpand(True)
 
         text_scroll = Gtk.ScrolledWindow()
+        add_classes(text_scroll, "ds-transparent")
         text_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         text_scroll.set_vexpand(True)
 
         self.text_view = Gtk.TextView()
         self.text_view.set_name("editor-text")
+        add_classes(self.text_view, "ds-text-view")
         self.text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         text_buf = self.text_view.get_buffer()
         text_buf.connect("changed", self._on_content_changed)
         # GTK 3 gives a text buffer no undo of its own; this records one.
         self.undo_stack = UndoStack(text_buf)
-        self.find_tag = text_buf.create_tag("find-match", background="#ffe066", foreground="#000000")
-        self.find_tag_current = text_buf.create_tag(
-            "find-match-current", background="#ff9800", foreground="#000000"
-        )
+        # Colours come from the theme (base.css's highlight tokens) and are
+        # re-read whenever it changes: a text tag is not a CSS node, so nothing
+        # would restyle it on its own.
+        self.find_tag = text_buf.create_tag("find-match")
+        self.find_tag_current = text_buf.create_tag("find-match-current")
+        self._sync_find_colors()
+        self.text_view.connect("style-updated", lambda _w: self._sync_find_colors())
         text_scroll.add(self.text_view)
 
         wk_settings = WebKit2.Settings()
@@ -303,11 +317,12 @@ class NotesPanel(Gtk.Window):
         # preview, which renders the title as its own H1 instead.
         meta_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         meta_row.set_name("meta-row")
+        add_classes(meta_row, "ds-view")
         meta_row.set_no_show_all(True)
         self.meta_row = meta_row
 
         self.title_entry = Gtk.Entry()
-        self.title_entry.set_name("meta-title")
+        add_classes(self.title_entry, "ds-inline-entry", "ds-title")
         self.title_entry.set_placeholder_text("Title")
         self.title_entry.set_hexpand(True)
         self.title_entry.connect("activate", self._on_title_activate)
@@ -315,9 +330,10 @@ class NotesPanel(Gtk.Window):
 
         self.tag_combo = Gtk.ComboBoxText.new_with_entry()
         self.tag_combo.set_name("meta-tag")
+        add_classes(self.tag_combo, "ds-inline-combo")
         self.tag_combo.connect("changed", self._on_tag_combo_changed)
         tag_entry = self.tag_combo.get_child()
-        tag_entry.set_name("meta-tag-entry")
+        add_classes(tag_entry, "ds-inline-entry", "ds-caption")
         tag_entry.set_placeholder_text("tag")
         tag_entry.set_width_chars(10)
         tag_entry.connect("activate", self._on_tag_activate)
@@ -357,15 +373,17 @@ class NotesPanel(Gtk.Window):
         # own actions. Membership per mode is decided by _update_bottom_bar().
         bottom_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         bottom_bar.set_name("bottom-bar")
+        add_classes(bottom_bar, "ds-bar", "ds-divider-top")
         bottom_bar.set_no_show_all(True)
         self.bottom_bar = bottom_bar
 
         self.btn_new = Gtk.Button(label="+ New note")
         self.btn_new.set_name("btn-new")
+        add_classes(self.btn_new, "ds-button", "ds-button-accent")
         self.btn_new.connect("clicked", self._on_new_note)
 
         self.btn_open_trash = Gtk.Button()
-        self.btn_open_trash.set_name("btn-action")
+        add_classes(self.btn_open_trash, "ds-button", "ds-button-icon")
         self.btn_open_trash.set_image(
             Gtk.Image.new_from_icon_name("user-trash-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
         )
@@ -373,22 +391,23 @@ class NotesPanel(Gtk.Window):
         self.btn_open_trash.connect("clicked", self._on_open_trash)
 
         self.btn_settings = Gtk.Button.new_from_icon_name("emblem-system-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
-        self.btn_settings.set_name("btn-action")
+        add_classes(self.btn_settings, "ds-button", "ds-button-icon")
         self.btn_settings.set_tooltip_text("Settings")
         self.btn_settings.connect("clicked", self._on_open_settings)
 
         self.btn_back = Gtk.Button(label="← Back")
-        self.btn_back.set_name("btn-back")
+        add_classes(self.btn_back, "ds-button")
         self.btn_back.connect("clicked", self._on_back)
 
         self.btn_empty_trash = Gtk.Button(label="Empty trash")
-        self.btn_empty_trash.set_name("btn-empty-trash")
+        add_classes(self.btn_empty_trash, "ds-button", "ds-button-destructive")
         self.btn_empty_trash.connect("clicked", self._on_empty_trash)
 
         # Separates the one control that never changes (settings) from the
         # actions of whichever view is up.
         bar_separator = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
         bar_separator.set_name("bar-separator")
+        add_classes(bar_separator, "ds-separator")
 
         bottom_bar.pack_start(self.btn_back, False, False, 0)
         bottom_bar.pack_start(self.btn_new, True, True, 0)
@@ -981,6 +1000,20 @@ class NotesPanel(Gtk.Window):
             self.btn_preview.set_tooltip_text("Preview")
 
     # --- find in note ---
+
+    def _sync_find_colors(self):
+        # Only the background: the tokens are mostly the view's own ground, so
+        # the theme's text colour stays readable on them in light and dark.
+        context = self.text_view.get_style_context()
+        for tag, name, fallback in (
+            (self.find_tag, "ds_highlight_bg", "#ffe066"),
+            (self.find_tag_current, "ds_highlight_strong_bg", "#ff9800"),
+        ):
+            found, rgba = context.lookup_color(name)
+            if not found:
+                rgba = Gdk.RGBA()
+                rgba.parse(fallback)
+            tag.set_property("background-rgba", rgba)
 
     def _on_toggle_find(self, btn):
         if self.find_revealer.get_reveal_child():
